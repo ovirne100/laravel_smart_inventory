@@ -2,58 +2,39 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\InventoryDetail;
 use Illuminate\Http\Request;
+use App\Services\InventoryService;
 
-class InventoryController 
+class InventoryController extends Controller
 {
-    // GET /api/inventory → lista todos los detalles del inventario
-    public function index()
+    protected $inventoryService;
+
+    public function __construct(InventoryService $inventoryService)
     {
-        $inventory = InventoryDetail::with(['product', 'inventory', 'location'])->get();
-        return response()->json($inventory);
+        $this->inventoryService = $inventoryService;
     }
 
-    // POST /api/inventory → crear un nuevo detalle de inventario
+    /**
+     * 📦 Crear inventario
+     */
     public function store(Request $request)
     {
-        $validated = $request->validate([
-            'product_id' => 'required|exists:products,id',
-            'inventory_id' => 'required|exists:inventories,id',
-            'location_id' => 'required|exists:locations,id',
-            'current_stock' => 'required|integer',
-            'min_threshold' => 'required|integer',
-        ]);
-
-        $inventoryDetail = InventoryDetail::create($validated);
-        return response()->json($inventoryDetail, 201);
+        return $this->inventoryService->createInventory($request);
     }
 
-    // GET /api/inventory/{id} → mostrar un detalle específico
-    public function show(InventoryDetail $inventoryDetail)
+    /**
+     * 🔄 Ajustar stock (entrada o salida)
+     */
+    public function adjustStock(Request $request, $id)
     {
-        return response()->json($inventoryDetail->load(['product', 'inventory', 'location']));
+        return $this->inventoryService->adjustStock($request, $id);
     }
 
-    // PUT /api/inventory/{id} → actualizar un detalle de inventario
-    public function update(Request $request, InventoryDetail $inventoryDetail)
+    /**
+     * 🗑️ Eliminar inventario
+     */
+    public function destroy($id)
     {
-        $validated = $request->validate([
-            'product_id' => 'sometimes|exists:products,id',
-            'inventory_id' => 'sometimes|exists:inventories,id',
-            'location_id' => 'sometimes|exists:locations,id',
-            'current_stock' => 'sometimes|integer',
-            'min_threshold' => 'sometimes|integer',
-        ]);
-
-        $inventoryDetail->update($validated);
-        return response()->json($inventoryDetail->load(['product', 'inventory', 'location']));
-    }
-
-    // DELETE /api/inventory/{id} → eliminar un detalle de inventario
-    public function destroy(InventoryDetail $inventoryDetail)
-    {
-        $inventoryDetail->delete();
-        return response()->json(null, 204);
+        return $this->inventoryService->deleteInventory($id);
     }
 }

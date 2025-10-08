@@ -2,64 +2,97 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Entry;
+use App\Services\EntryService;
 use Illuminate\Http\Request;
 
-class EntryController
+class EntryController extends Controller
 {
+    protected $entryService;
+
+    public function __construct(EntryService $entryService)
+    {
+        $this->entryService = $entryService;
+    }
+
     /**
-     * Display a listing of the resource.
+     * 📄 Listar todas las entradas
      */
     public function index()
     {
-        //
+        $data = $this->entryService->getAllEntries();
+
+        return response()->json([
+            'message' => 'Listado de entradas',
+            'data'    => $data
+        ]);
     }
 
     /**
-     * Show the form for creating a new resource.
-     */
-    public function create()
-    {
-        //
-    }
-
-    /**
-     * Store a newly created resource in storage.
+     * ➕ Crear nueva entrada
      */
     public function store(Request $request)
     {
-        //
+        $entry = $this->entryService->createEntry($request);
+
+        return response()->json([
+            'message' => 'Entrada creada exitosamente',
+            'data'    => $entry
+        ], 201);
     }
 
     /**
-     * Display the specified resource.
+     * 🔍 Mostrar una entrada
      */
-    public function show(Entry $entry)
+    public function show($id)
     {
-        //
+        $entry = $this->entryService->getEntryById($id);
+
+        return response()->json([
+            'message' => 'Detalles de la entrada',
+            'data'    => $entry
+        ]);
     }
 
     /**
-     * Show the form for editing the specified resource.
+     * ✏️ Actualizar una entrada
      */
-    public function edit(Entry $entry)
+    public function update(Request $request, $id)
     {
-        //
+        $entry = $this->entryService->updateEntry($request, $id);
+
+        return response()->json([
+            'message' => 'Entrada actualizada exitosamente',
+            'data'    => $entry
+        ]);
     }
 
     /**
-     * Update the specified resource in storage.
+     * 📊 Resumen de entradas
      */
-    public function update(Request $request, Entry $entry)
+    public function summary()
     {
-        //
+        $summary = $this->entryService->getSummary();
+
+        return response()->json($summary);
     }
 
     /**
-     * Remove the specified resource from storage.
+     * 🗑️ Eliminar una entrada
      */
-    public function destroy(Entry $entry)
+    public function destroy($id)
     {
-        //
+        $this->entryService->deleteEntry($id);
+
+        return response()->json(['message' => 'Entrada eliminada exitosamente']);
+    }
+
+    /**
+     * 📦 Listas para selects
+     */
+    public function formData()
+    {
+        $data = $this->entryService->getFormData();
+
+        return response()->json($data);
     }
 }
