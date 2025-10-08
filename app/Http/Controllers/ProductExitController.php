@@ -2,55 +2,71 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\ProductExit;
+use App\Services\ProductExitService;
 use Illuminate\Http\Request;
 
 class ProductExitController extends Controller
 {
+    protected $productExitService;
+
+    public function __construct(ProductExitService $productExitService)
+    {
+        $this->productExitService = $productExitService;
+    }
+
+    /**
+     * 📄 Listar todas las salidas
+     */
     public function index()
     {
-        return ProductExit::with('user')->get(); // relación en inglés
+        return $this->productExitService->getAllExits();
     }
 
+    /**
+     * ➕ Crear nueva salida
+     */
     public function store(Request $request)
     {
-        $validated = $request->validate([
-            'user_id' => 'required|exists:users,id',
-            'exit_date' => 'required|date',
-            'exit_type' => 'required|string|max:20',
-        ]);
-
-        $exit = ProductExit::create($validated);
-
-        return response()->json($exit, 201);
+        return $this->productExitService->createExit($request);
     }
 
+    /**
+     * 🔍 Mostrar una salida
+     */
     public function show($id)
     {
-        $exit = ProductExit::with('user')->findOrFail($id);
-        return $exit;
+        return $this->productExitService->getExitById($id);
     }
 
+    /**
+     * ✏️ Actualizar una salida
+     */
     public function update(Request $request, $id)
     {
-        $exit = ProductExit::findOrFail($id);
-
-        $validated = $request->validate([
-            'user_id' => 'sometimes|exists:users,id',
-            'exit_date' => 'sometimes|date',
-            'exit_type' => 'sometimes|string|max:20',
-        ]);
-
-        $exit->update($validated);
-
-        return response()->json($exit, 200);
+        return $this->productExitService->updateExit($request, $id);
     }
 
+    /**
+     * 📊 Resumen de salidas (para dashboard)
+     */
+    public function summary()
+    {
+        return $this->productExitService->getSummary();
+    }
+
+    /**
+     * 🗑️ Eliminar una salida
+     */
     public function destroy($id)
     {
-        $exit = ProductExit::findOrFail($id);
-        $exit->delete();
+        return $this->productExitService->deleteExit($id);
+    }
 
-        return response()->json(['message' => 'Product exit deleted successfully']);
+    /**
+     * 📦 Listas para selects (productos, usuarios)
+     */
+    public function formData()
+    {
+        return $this->productExitService->getFormData();
     }
 }

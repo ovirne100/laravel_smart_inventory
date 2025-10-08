@@ -3,11 +3,106 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Builder;
 
 class Order extends Model
 {
-     protected $fillable = ['role_id', 'dep_buy_id', 'date', 'status'];
-    public function role() { return $this->belongsTo(Role::class); }
-    public function depBuy() { return $this->belongsTo(DepBuy::class); }
-    public function detalles() { return $this->hasMany(ProductDetail::class); }
+    protected $fillable = ['date', 'status', 'user_id', 'supplier_id','product_id'];
+
+    // Relaciones permitidas en includes
+    protected $allowIncluded = ['supplier', 'user', 'products'];
+    protected $allowFilter   = ['id', 'status'];
+    protected $allowSort     = ['id', 'status', 'date'];
+
+    // Relación con proveedor
+    public function supplier()
+    {
+        return $this->belongsTo(Supplier::class, 'supplier_id');
+    }
+
+    // Relación con usuario
+    public function user()
+    {
+        return $this->belongsTo(User::class, 'user_id');
+    }
+
+    // Relación uno a muchos con productos
+    public function products()
+    {
+        return $this->hasMany(Product::class, 'order_id');
+    }
+
+    /* ----------------- SCOPES DINÁMICOS ----------------- */
+    public function scopeIncluded(Builder $query)
+    {
+        if (empty($this->allowIncluded) || empty(request('included'))) {
+            return;
+        }
+
+        $relations = explode(',', request('included'));
+        $allowIncluded = collect($this->allowIncluded);
+
+        foreach ($relations as $key => $relationship) {
+            if (!$allowIncluded->contains($relationship)) {
+                unset($relations[$key]);
+            }
+        }
+
+        $query->with($relations);
+    }
+
+    public function scopeFilter(Builder $query)
+    {
+        if (empty($this->allowFilter) || empty(request('filter'))) {
+            return;
+        }
+
+        $filters = request('filter');
+        $allowFilter = collect($this->allowFilter);
+
+        foreach ($filters as $filter => $value) {
+            if ($allowFilter->contains($filter)) {
+                if (is_numeric($value)) {
+                    $query->where($filter, $value);
+                } elseif (strtotime($value)) {
+                    $query->whereDate($filter, $value);
+                } else {
+                    $query->where($filter, 'LIKE', '%' . $value . '%');
+                }
+            }
+        }
+    }
+
+    public function scopeSort(Builder $query)
+    {
+        if (empty($this->allowSort) || empty(request('sort'))) {
+            return;
+        }
+
+        $sortFields = explode(',', request('sort'));
+        $allowSort = collect($this->allowSort);
+
+        foreach ($sortFields as $sortField) {
+            $direction = 'asc';
+            if (substr($sortField, 0, 1) == '-') {
+                $direction = 'desc';
+                $sortField = substr($sortField, 1);
+            }
+            if ($allowSort->contains($sortField)) {
+                $query->orderBy($sortField, $direction);
+            }
+        }
+    }
+
+    public function scopeGetOrPaginate(Builder $query)
+    {
+        if (request('perPage')) {
+            $perPage = intval(request('perPage'));
+            if ($perPage) {
+                return $query->paginate($perPage);
+            }
+        }
+
+        return $query->get();
+    }
 }
