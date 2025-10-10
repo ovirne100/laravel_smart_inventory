@@ -140,8 +140,8 @@ class SupplierController extends Controller
                 'supplier_reference' => $p['supplier_reference'] ?? null,
             ];
         }
-        $supplier->products()->attach($attachData);
-        return response()->json(['message' => 'Products attached']);
+        $supplier->products()->syncWithoutDetaching($attachData);
+        return response()->json(['message' => 'Productos asociados correctamente']);
     }
 
     public function syncProducts(Request $request, Supplier $supplier)
@@ -169,4 +169,11 @@ class SupplierController extends Controller
         $supplier->products()->detach($product->id);
         return response()->noContent();
     }
+
+    public function getProducts($supplierId)
+{
+    $supplier = \App\Models\Supplier::with('products')->findOrFail($supplierId);
+    return response()->json($supplier->products);
+}
+
 }

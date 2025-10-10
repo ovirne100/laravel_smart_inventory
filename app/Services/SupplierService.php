@@ -9,7 +9,7 @@ class SupplierService
     public function list(array $filters = [])
     {
         $search = $filters['search'] ?? null;
-        $perPage = (int)($filters['perPage'] ?? 15);
+        $perPage = (int)($filters['perPage'] ?? 100);
 
         $query = Supplier::query();
         if ($search) {

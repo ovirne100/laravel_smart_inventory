@@ -4,9 +4,17 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use App\Services\ExitDetailService;
+use App\Models\Product;
 
 class ExitDetailController extends Controller
 {
+public function formData()
+{
+    return response()->json([
+        'productos' => Product::all()
+    ]);
+}
+
     protected $service;
 
     public function __construct(ExitDetailService $service)
