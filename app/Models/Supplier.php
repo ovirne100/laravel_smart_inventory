@@ -17,15 +17,20 @@ class Supplier extends Model
     ];
 
     // Listas blancas para includes, filtros y orden
-    protected array $allowIncluded = []; // Puedes agregar relaciones si las necesitas
+    protected array $allowIncluded = ['products']; // puedes agregar relaciones aquí
     protected array $allowFilter   = ['id', 'name', 'email', 'phone', 'address'];
     protected array $allowSort     = ['id', 'name'];
 
-    /* ================== SCOPES ================== */
+    /* ================== RELACIONES ================== */
+    public function products()
+    {
+        return $this->belongsToMany(Product::class, 'product_supplier', 'supplier_id', 'product_id')
+                    ->withPivot('unit_cost', 'supplier_reference');
+    }
 
+    /* ================== SCOPES ================== */
     public function scopeIncluded(Builder $query)
     {
-<<<<<<< HEAD
         if (empty($this->allowIncluded) || empty(request('included'))) return;
 
         $relations = explode(',', request('included'));
@@ -34,10 +39,6 @@ class Supplier extends Model
         if (!empty($relations)) {
             $query->with($relations);
         }
-=======
-        return $this->belongsToMany(Product::class, 'product_supplier', 'supplier_id', 'product_id')
-                    ->withPivot('unit_cost', 'supplier_reference');
->>>>>>> 0ed22cfdc47b44ea2a0de0d18550105196679823
     }
 
     public function scopeFilter(Builder $query)
