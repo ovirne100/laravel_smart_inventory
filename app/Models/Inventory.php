@@ -4,35 +4,34 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Builder;
-use App\Http\Controllers\AlertController;
+use App\Models\Alert;
 
 class Inventory extends Model
 {
+    // ==================================================
+    // 🧱 CAMPOS PERMITIDOS
+    // ==================================================
     protected $fillable = [
-        'stock',
-        'min_stock',
         'product_id',
         'user_id',
-        'warehouse_id',
-        'location_id', // Asegúrate de incluirlo si usas ubicaciones internas
+        'location_id',  // ubicación interna o almacén lógico
+        'stock',        // stock actual
+        'min_stock',    // stock mínimo permitido
     ];
 
-    // 🔹 Permitir relaciones, filtros y ordenamiento
-    protected $allowIncluded = ['product', 'user', 'warehouse', 'alerts'];
-    protected $allowFilter   = ['id', 'product_id', 'warehouse_id', 'location_id'];
-    protected $allowSort     = ['id', 'product_id', 'stock'];
+    // ==================================================
+    // ⚙️ CONFIGURACIÓN DE FILTROS, RELACIONES Y ORDEN
+    // ==================================================
+    protected $allowIncluded = ['product', 'user', 'location', 'alerts'];
+    protected $allowFilter   = ['id', 'product_id', 'location_id', 'stock'];
+    protected $allowSort     = ['id', 'product_id', 'stock', 'min_stock'];
 
     // ==================================================
-    // 🧩 RELACIONES
+    // 🔗 RELACIONES
     // ==================================================
     public function product()
     {
         return $this->belongsTo(Product::class, 'product_id');
-    }
-
-    public function location()
-    {
-        return $this->belongsTo(Location::class, 'location_id');
     }
 
     public function user()
@@ -40,12 +39,11 @@ class Inventory extends Model
         return $this->belongsTo(User::class, 'user_id');
     }
 
-    public function warehouse()
+    public function location()
     {
-        return $this->belongsTo(Warehouse::class, 'warehouse_id');
+        return $this->belongsTo(Location::class, 'location_id');
     }
 
-    // 🔥 Relación con alertas (una relación de uno a muchos)
     public function alerts()
     {
         return $this->hasMany(Alert::class, 'inventory_id');
@@ -111,18 +109,50 @@ class Inventory extends Model
     }
 
     // ==================================================
-    // 🧠 EVENTOS AUTOMÁTICOS DEL MODELO
+    // 🧠 MÉTODOS PERSONALIZADOS
     // ==================================================
-    // Esta sección hará que se verifique el stock automáticamente
-    // cada vez que se crea o actualiza un inventario.
+    public function isLowStock()
+    {
+        return $this->stock < $this->min_stock;
+    }
+
+    // ==================================================
+    // 🚨 EVENTOS AUTOMÁTICOS
+    // ==================================================
     protected static function booted()
     {
         static::created(function ($inventory) {
-            AlertController::checkStock($inventory);
+            $inventory->checkAndCreateAlert();
         });
 
         static::updated(function ($inventory) {
-            AlertController::checkStock($inventory);
+            $inventory->checkAndCreateAlert();
         });
+    }
+
+    // ==================================================
+    // ⚡ LÓGICA PARA CREAR ALERTAS
+    // ==================================================
+    public function checkAndCreateAlert()
+    {
+        // Si el stock está por debajo del mínimo
+        if ($this->isLowStock()) {
+            // Verificar si ya existe una alerta activa
+            $alertExists = $this->alerts()
+                ->where('status', 'pendiente')
+                ->where('alert_type', 'bajo_stock')
+                ->exists();
+
+            if (!$alertExists) {
+                Alert::create([
+                    'inventory_id' => $this->id,
+                    'product_id'   => $this->product_id,
+                    'alert_type'   => 'bajo_stock',
+                    'status'       => 'pendiente',
+                    'message'      => "El producto '{$this->product->name}' tiene un stock bajo ({$this->stock}).",
+                    'date'         => now(),
+                ]);
+            }
+        }
     }
 }

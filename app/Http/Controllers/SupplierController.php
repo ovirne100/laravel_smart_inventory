@@ -37,6 +37,7 @@ class SupplierController extends Controller
                 'email' => 'nullable|email|max:100',
                 'phone' => 'nullable|string|max:20',
                 'address' => 'nullable|string|max:150',
+                'tax_id' => 'nullable|string|max:50',
             ]);
 
             // Mapear campos del frontend a la estructura de la BD
@@ -89,6 +90,7 @@ class SupplierController extends Controller
                 'email' => 'nullable|email|max:100',
                 'phone' => 'nullable|string|max:20',
                 'address' => 'nullable|string|max:150',
+                'tax_id' => 'nullable|string|max:50',
             ]);
 
             $data = [];
@@ -96,7 +98,7 @@ class SupplierController extends Controller
             if (array_key_exists('email', $validated)) $data['contact_email'] = $validated['email'];
             if (array_key_exists('phone', $validated)) $data['phone'] = $validated['phone'];
             if (array_key_exists('address', $validated)) $data['address'] = $validated['address'];
-
+            if (array_key_exists('tax_id', $validated)) $data['tax_id'] = $validated['tax_id'];
             return $this->service->update($supplier, $data);
         } catch (\Exception $e) {
             return response()->json([
@@ -109,11 +111,22 @@ class SupplierController extends Controller
     /**
      * Remove the specified resource from storage.
      */
-    public function destroy(Supplier $supplier)
-    {
-        $this->service->delete($supplier);
-        return response()->noContent();
+ public function destroy($id)
+{
+    try {
+        $supplier = Supplier::findOrFail($id);
+        $supplier->delete();
+
+        return response()->json([
+            'message' => 'Proveedor eliminado correctamente'
+        ], 200);
+    } catch (\Exception $e) {
+        return response()->json([
+            'message' => 'Error eliminando proveedor',
+            'error' => $e->getMessage()
+        ], 500);
     }
+}
 
     // Extra endpoints
     public function products(Supplier $supplier)

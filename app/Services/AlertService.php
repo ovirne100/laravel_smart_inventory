@@ -22,17 +22,21 @@ class AlertService
         // 🔎 Determinar tipo de alerta según el stock actual
         if ($inventory->stock <= 0) {
             $type = 'critical';
-            $message = 'El stock del producto "' . $inventory->product->name . '" está en 0. ¡Reabastecimiento urgente!';
+            $message = "El stock del producto '{$inventory->product->name}' está en 0. ¡Reabastecimiento urgente!";
         } elseif ($inventory->stock < $inventory->min_stock) {
             $type = 'low_stock';
-            $message = 'El stock del producto "' . $inventory->product->name . '" está por debajo del mínimo permitido.';
+            $message = "El stock del producto '{$inventory->product->name}' está por debajo del mínimo permitido.";
         }
 
-        // ✅ Si el stock está normal → resolver todas las alertas activas
+        // ✅ Si el stock está normal → resolver alertas activas
         if (!$type) {
             Alert::where('inventory_id', $inventory->id)
                 ->where('status', 'active')
-                ->update(['status' => 'resolved']);
+                ->update([
+                    'status' => 'resolved',
+                    'resolved_at' => now(),
+                ]);
+
             Log::info("🟢 Alerta resuelta automáticamente para inventario ID {$inventory->id}");
             return null;
         }
@@ -50,7 +54,10 @@ class AlertService
         // 🔒 Resolver otras alertas activas antes de crear una nueva
         Alert::where('inventory_id', $inventory->id)
             ->where('status', 'active')
-            ->update(['status' => 'resolved']);
+            ->update([
+                'status' => 'resolved',
+                'resolved_at' => now(),
+            ]);
 
         // 🆕 Crear nueva alerta
         $alert = Alert::create([
@@ -62,7 +69,7 @@ class AlertService
             'date'         => now(),
         ]);
 
-        Log::warning("🚨 Nueva alerta {$type} creada para inventario ID {$inventory->id}");
+        Log::warning("🚨 Nueva alerta '{$type}' creada para inventario ID {$inventory->id}");
 
         $this->sendNotification($alert);
 
@@ -96,7 +103,11 @@ class AlertService
     public function resolveAlert($id)
     {
         $alert = Alert::findOrFail($id);
-        $alert->update(['status' => 'resolved']);
+        $alert->update([
+            'status' => 'resolved',
+            'resolved_at' => now(),
+        ]);
+
         Log::info("✅ Alerta ID {$id} resuelta manualmente.");
 
         return $alert;
@@ -107,13 +118,21 @@ class AlertService
      */
     public function createManualAlert(Request $request)
     {
+        $validated = $request->validate([
+            'inventory_id' => 'required|exists:inventories,id',
+            'alert_type'   => 'required|string',
+            'message'      => 'nullable|string',
+        ]);
+
+        $inventory = Inventory::findOrFail($validated['inventory_id']);
+
         $alert = Alert::create([
             'date'         => now(),
-            'alert_type'   => $request->alert_type,
-            'product_id'   => $request->product_id,
-            'inventory_id' => $request->inventory_id,
+            'alert_type'   => $validated['alert_type'],
+            'product_id'   => $inventory->product_id,
+            'inventory_id' => $inventory->id,
             'status'       => 'active',
-            'message'      => $request->message ?? 'Alerta generada manualmente.',
+            'message'      => $validated['message'] ?? 'Alerta generada manualmente.',
         ]);
 
         $this->sendNotification($alert);
@@ -122,19 +141,19 @@ class AlertService
     }
 
     /**
-     * ✉️ Enviar notificación de alerta
+     * ✉️ Enviar notificación de alerta (correo o evento)
      */
     private function sendNotification(Alert $alert)
     {
         try {
-            $emailDestino = 'ivanslee77@gmail.com'; // 📩 Cambia aquí tu correo
+            $emailDestino = 'ivanslee77@gmail.com'; // 📩 Personaliza este correo o usa usuario dinámico
 
             Notification::route('mail', $emailDestino)
                 ->notify(new StockAlertNotification($alert));
 
-            Log::info("📧 Notificación enviada correctamente a {$emailDestino} para producto ID {$alert->product_id}");
+            Log::info("📧 Notificación enviada a {$emailDestino} para producto ID {$alert->product_id}");
         } catch (\Exception $e) {
-            Log::error('❌ Error al enviar notificación de alerta: ' . $e->getMessage());
+            Log::error("❌ Error al enviar notificación de alerta: {$e->getMessage()}");
         }
     }
 }

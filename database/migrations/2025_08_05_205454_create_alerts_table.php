@@ -8,18 +8,21 @@ return new class extends Migration
 {
     public function up(): void
     {
-       Schema::create('alerts', function (Blueprint $table) {
-    $table->id();
-    $table->foreignId('inventory_id')->constrained('inventories')->onDelete('cascade');
-    $table->foreignId('product_id')->constrained('products')->onDelete('cascade');
-    $table->string('alert_type');          // low_stock, critical, etc.
-    $table->string('message');
-    $table->enum('status', ['active', 'resolved'])->default('active');
-    $table->timestamp('date')->nullable();
-    $table->timestamp('resolved_at')->nullable();
-    $table->timestamps();
-});
+        Schema::create('alerts', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('inventory_id')->constrained()->onDelete('cascade');
+            $table->foreignId('product_id')->constrained()->onDelete('cascade');
+
+            // Campos de texto simples en lugar de ENUM
+            $table->string('alert_type')->default('bajo_stock'); // Ej: 'bajo_stock', 'sin_stock'
+            $table->string('status')->default('pendiente');      // Ej: 'pendiente', 'resuelto'
+
+            $table->string('message');
+            $table->dateTime('date');
+            $table->timestamps();
+        });
     }
+
     public function down(): void
     {
         Schema::dropIfExists('alerts');

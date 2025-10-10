@@ -3,12 +3,14 @@
 namespace App\Services;
 
 use App\Models\Product;
+use App\Models\Inventory;
+use Illuminate\Support\Facades\DB;
 
 class ProductService
 {
     public function getAll($filters = [])
     {
-        $query = Product::with('categoria')
+        $query = Product::with(['categoria', 'inventory'])
             ->search($filters['search'] ?? null)
             ->category($filters['category_id'] ?? null)
             ->status($filters['status'] ?? null);
@@ -20,9 +22,34 @@ class ProductService
         return $query->paginate(10);
     }
 
+    /**
+     * Crear producto con inventario automático
+     */
     public function create(array $data): Product
     {
-        return Product::create($data);
+        return DB::transaction(function () use ($data) {
+
+            // 🔹 1. Crear producto
+            $product = Product::create([
+                'name' => $data['name'],
+                'category_id' => $data['category_id'],
+                'reference' => $data['reference'],
+                'unit_measurement' => $data['unit_measurement'],
+                'batch' => $data['batch'],
+                'expiration_date' => $data['expiration_date'] ?? null,
+                'image' => $data['image'] ?? null,
+            ]);
+
+            // 🔹 2. Crear inventario asociado al producto
+            Inventory::create([
+                'product_id' => $product->id,
+                'quantity' => $data['cantidad'] ?? 0,
+                'min_stock' => $data['min_stock'] ?? 0,
+                'location' => $data['location'] ?? 'Sin ubicación',
+            ]);
+
+            return $product->load('inventory');
+        });
     }
 
     public function update(Product $product, array $data): Product

@@ -7,7 +7,12 @@ use Illuminate\Database\Eloquent\Model;
 class Product extends Model
 {
     protected $fillable = [
-        'name', 'category_id', 'reference', 'unit_measurement', 'batch', 'expiration_date',
+        'name',
+        'category_id',
+        'reference',
+        'unit_measurement',
+        'batch',
+        'expiration_date',
         'image'
     ];
 
@@ -15,19 +20,33 @@ class Product extends Model
         'expiration_date' => 'date:Y-m-d',
     ];
 
-    // Accessor para la URL completa de la imagen
+    /** 🔹 Accessor para URL completa de imagen */
     public function getImageUrlAttribute()
     {
         if ($this->image) {
-            return url($this->image); // ejemplo: http://localhost/uploads/products/xxxx.jpg
+            return url($this->image);
         }
         return null;
     }
 
-    public function categoria() { return $this->belongsTo(Category::class, 'category_id'); }
-    public function detalles() { return $this->hasMany(ProductDetail::class); }
+    /** 🔹 Relaciones */
+    public function categoria()
+    {
+        return $this->belongsTo(Category::class, 'category_id');
+    }
 
-       // Scope para filtrar por categoría
+    public function detalles()
+    {
+        return $this->hasMany(ProductDetail::class);
+    }
+
+    /** 🔹 Relación con inventario */
+    public function inventory()
+    {
+        return $this->hasOne(Inventory::class, 'product_id');
+    }
+
+    /** 🔹 Scopes */
     public function scopeCategory($query, $categoryId)
     {
         if ($categoryId) {
@@ -36,8 +55,6 @@ class Product extends Model
         return $query;
     }
 
-
-    // Scope para filtrar por estado (activo/inactivo)
     public function scopeStatus($query, $status)
     {
         if ($status) {
@@ -46,10 +63,6 @@ class Product extends Model
         return $query;
     }
 
-
-
-
-    // Scope para filtrar por rango de precio
     public function scopePriceRange($query, $min, $max)
     {
         if ($min !== null && $max !== null) {
@@ -58,7 +71,6 @@ class Product extends Model
         return $query;
     }
 
-     // Scope para búsqueda por nombre parcial
     public function scopeSearch($query, $term)
     {
         if ($term) {
@@ -66,5 +78,4 @@ class Product extends Model
         }
         return $query;
     }
-
 }

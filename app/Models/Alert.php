@@ -7,22 +7,29 @@ use Illuminate\Database\Eloquent\Builder;
 
 class Alert extends Model
 {
+    // ==================================================
+    // 🧱 CAMPOS PERMITIDOS
+    // ==================================================
     protected $fillable = [
-        'date',
-        'alert_type',
-        'product_id',
-        'status',
-        'inventory_id',
-        'message',
-        'resolved_at',
+        'inventory_id',   // Relación con el inventario
+        'product_id',     // Producto asociado
+        'date',           // Fecha de la alerta
+        'alert_type',     // Tipo de alerta (por ejemplo: 'bajo_stock')
+        'message',        // Mensaje descriptivo
+        'status',         // Estado ('activa', 'resuelta', etc.)
+        'resolved_at',    // Fecha de resolución
     ];
 
-    // Permitir relaciones, filtros y ordenamientos desde las querys
-    protected array $allowIncluded = ['inventory.product', 'inventory.user'];
+    // ==================================================
+    // ⚙️ CONFIGURACIÓN DE FILTROS, RELACIONES Y ORDEN
+    // ==================================================
+    protected array $allowIncluded = ['inventory.product', 'inventory.user', 'inventory.location'];
     protected array $allowFilter   = ['id', 'date', 'alert_type', 'status', 'product_id', 'inventory_id', 'resolved_at'];
     protected array $allowSort     = ['id', 'date', 'alert_type', 'status', 'resolved_at'];
 
-    // ================== RELACIONES ==================
+    // ==================================================
+    // 🔗 RELACIONES
+    // ==================================================
     public function inventory()
     {
         return $this->belongsTo(Inventory::class, 'inventory_id');
@@ -33,11 +40,9 @@ class Alert extends Model
         return $this->belongsTo(Product::class, 'product_id');
     }
 
-    // ================== SCOPES ==================
-
-    /**
-     * 🔗 Carga relaciones dinámicamente (usando ?included=inventory.product)
-     */
+    // ==================================================
+    // 🔎 SCOPES (Filtros, Orden y Relaciones)
+    // ==================================================
     public function scopeIncluded(Builder $query)
     {
         $relations = explode(',', request('included', ''));
@@ -50,9 +55,6 @@ class Alert extends Model
         return $query;
     }
 
-    /**
-     * 🔍 Filtra resultados (?filter[field]=value o ?field=value)
-     */
     public function scopeFilter(Builder $query)
     {
         if (empty($this->allowFilter)) {
@@ -76,9 +78,6 @@ class Alert extends Model
         return $query;
     }
 
-    /**
-     * ↕️ Ordena resultados (?sort=-date,alert_type)
-     */
     public function scopeSort(Builder $query)
     {
         $sortFields = explode(',', request('sort', ''));
@@ -95,16 +94,15 @@ class Alert extends Model
         return $query;
     }
 
-    /**
-     * 📄 Retorna resultados paginados o completos (?perPage=10)
-     */
     public function scopeGetOrPaginate(Builder $query)
     {
         $perPage = intval(request('perPage', 0));
         return $perPage > 0 ? $query->paginate($perPage) : $query->get();
     }
 
-    // ================== HELPERS ==================
+    // ==================================================
+    // 🧠 MÉTODOS AUXILIARES
+    // ==================================================
     protected function isDate($value): bool
     {
         return strtotime($value) !== false;

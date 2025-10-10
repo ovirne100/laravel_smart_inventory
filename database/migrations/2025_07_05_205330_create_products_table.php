@@ -7,26 +7,37 @@ use Illuminate\Support\Facades\Schema;
 return new class extends Migration
 {
     /**
-     * Run the migrations.
+     * Ejecuta la migración.
      */
     public function up(): void
     {
         Schema::create('products', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('category_id')->nullable()->constrained('categories');
-            $table->string('name', 25);
-            $table->string('reference', 50)->nullable();
-            $table->string('unit_measurement', 10)->nullable();
-            $table->string('batch', 10);
-            $table->date('expiration_date')->nullable();
-            $table->string('image',255)->nullable(); // Nueva columna para la imagen
 
+            // 🔗 Relación con categoría
+            $table->foreignId('category_id')
+                ->nullable()
+                ->constrained('categories')
+                ->nullOnDelete()
+                ->cascadeOnUpdate();
+
+            // 🏷️ Información básica del producto
+            $table->string('name', 100);
+            $table->string('reference', 50)->nullable();
+            $table->string('unit_measurement', 20)->nullable();
+            $table->string('batch', 50)->nullable();
+            $table->date('expiration_date')->nullable();
+
+            // 🖼️ Imagen del producto
+            $table->string('image', 255)->nullable();
+
+            // 🕒 Timestamps (created_at, updated_at)
             $table->timestamps();
         });
     }
 
     /**
-     * Reverse the migrations.
+     * Revertir la migración.
      */
     public function down(): void
     {

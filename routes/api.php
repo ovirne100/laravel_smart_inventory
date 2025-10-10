@@ -47,15 +47,6 @@ Route::post('categories/init', [CategoryController::class, 'init']);
 Route::post('categories/sync', [CategoryController::class, 'sync']);
 Route::apiResource('categories', CategoryController::class)->only(['index', 'show']);
 
-// ==========================
-// 🟡 RUTAS PROTEGIDAS (Auth)
-// ==========================
-Route::middleware('auth:sanctum')->group(function () {
-
-    // 🔐 Autenticación
-    Route::post('logout', [AuthController::class, 'logout']);
-    Route::get('profile', [UserController::class, 'profile']);
-    Route::get('user', [AuthController::class, 'me']);
 
     // ======================
     // 📦 Productos e Inventarios
@@ -118,6 +109,16 @@ Route::middleware('auth:sanctum')->group(function () {
     // 📊 Dashboard
     // ======================
    // Route::get('dashboard/summary', [DashboardController::class, 'summary']);
+
+// ==========================
+// 🟡 RUTAS PROTEGIDAS (Auth)
+// ==========================
+Route::middleware('auth:sanctum')->group(function () {
+
+    // 🔐 Autenticación
+    Route::post('logout', [AuthController::class, 'logout']);
+    Route::get('profile', [UserController::class, 'profile']);
+    Route::get('user', [AuthController::class, 'me']);
 
     // ======================
     // 🧑‍💼 RUTAS SOLO ADMIN
