@@ -29,7 +29,6 @@ public function index(Request $request)
 }
 
 
-
     public function store(Request $request)
     {
         // Validar los datos recibidos (permitir opcionales como en el frontend)
@@ -83,4 +82,11 @@ public function index(Request $request)
         $this->service->delete($product);
         return response()->json(['message' => 'deleted']);
     }
+
+    public function getSuppliers($productId)
+{
+    $product = \App\Models\Product::with('suppliers')->findOrFail($productId);
+    return response()->json($product->suppliers);
+}
+
 }

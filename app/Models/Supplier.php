@@ -15,7 +15,6 @@ class Supplier extends Model
     public function products()
     {
         return $this->belongsToMany(Product::class, 'product_supplier', 'supplier_id', 'product_id')
-                    // Crucial: Specify the extra columns from the pivot table
                     ->withPivot('unit_cost', 'supplier_reference');
     }
 
