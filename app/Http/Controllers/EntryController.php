@@ -4,11 +4,15 @@ namespace App\Http\Controllers;
 
 use App\Services\EntryService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 
 class EntryController extends Controller
 {
     protected $entryService;
 
+    /**
+     * Inyecta el servicio de entradas.
+     */
     public function __construct(EntryService $entryService)
     {
         $this->entryService = $entryService;
@@ -53,7 +57,7 @@ class EntryController extends Controller
     }
 
     /**
-     * 🔍 Mostrar una entrada
+     * 🔍 Mostrar una entrada específica
      */
     public function show($id)
     {
@@ -90,16 +94,6 @@ class EntryController extends Controller
     }
 
     /**
-     * 📊 Resumen de entradas
-     */
-    public function summary()
-    {
-        $summary = $this->entryService->getSummary();
-
-        return response()->json($summary);
-    }
-
-    /**
      * 🗑️ Eliminar una entrada
      */
     public function destroy($id)
@@ -110,7 +104,17 @@ class EntryController extends Controller
     }
 
     /**
-     * 📦 Listas para selects
+     * 📊 Resumen de entradas
+     */
+    public function summary()
+    {
+        $summary = $this->entryService->getSummary();
+
+        return response()->json($summary);
+    }
+
+    /**
+     * 📦 Listas para selects (productos, usuarios, proveedores)
      */
     public function formData()
     {

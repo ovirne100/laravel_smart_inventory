@@ -20,6 +20,7 @@ use App\Http\Controllers\ExitDetailController;
 use App\Http\Controllers\InventoryDetailController;
 use App\Http\Controllers\SupplierController;
 use App\Http\Controllers\ProductSupplierController;
+<<<<<<< HEAD
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\OutputController;
 
@@ -34,6 +35,9 @@ use App\Http\Controllers\OutputController;
 
 // ✅ Ruta de prueba básica
 Route::get('/ping', fn() => response()->json(['message' => 'API funcionando correctamente 🚀']));
+=======
+use App\Models\ExitDetail;
+>>>>>>> 0ed22cfdc47b44ea2a0de0d18550105196679823
 
 // ==========================
 // 🟢 RUTAS PÚBLICAS
@@ -49,9 +53,21 @@ Route::post('roles-public', [RoleController::class, 'store']);
     // ======================
    // Route::get('dashboard/summary', [DashboardController::class, 'summary']);
 
+<<<<<<< HEAD
 // ==========================
 // 🟡 RUTAS PROTEGIDAS (Auth)
 // ==========================
+=======
+//entradas de productos
+Route::get('entries/form-data', [EntryController::class, 'formData']);
+Route::apiResource('entries', EntryController::class);
+//salidas de productos
+Route::get('outputs/form-data', [ExitDetailController::class, 'formData']);
+Route::apiResource('outputs', ExitDetailController::class);
+
+
+// Protected routes
+>>>>>>> 0ed22cfdc47b44ea2a0de0d18550105196679823
 Route::middleware('auth:sanctum')->group(function () {
 
     // 🔐 Autenticación
@@ -114,6 +130,17 @@ Route::apiResource('categories', CategoryController::class)->only(['index', 'sho
     Route::post('suppliers/{supplier}/products', [SupplierController::class, 'syncProducts']);
     Route::post('suppliers/{supplier}/products/attach', [SupplierController::class, 'attachProducts']);
     Route::delete('suppliers/{supplier}/products/{product}', [SupplierController::class, 'detachProduct']);
+    // 🔹 Asociar múltiples productos a un proveedor
+Route::post('suppliers/{supplierId}/attach-products', [ProductSupplierController::class, 'attachProductsToSupplier']);
+
+// 🔹 Asociar múltiples proveedores a un producto
+Route::post('products/{productId}/attach-suppliers', [ProductSupplierController::class, 'attachSuppliersToProduct']);
+
+// 🔹 Obtener todos los productos de un proveedor (con detalles del pivot)
+Route::get('suppliers/{supplierId}/products', [SupplierController::class, 'getProducts']);
+
+// 🔹 Obtener todos los proveedores de un producto (con detalles del pivot)
+Route::get('products/{productId}/suppliers', [ProductController::class, 'getSuppliers']);
 
     // ======================
     // 🚨 Alertas

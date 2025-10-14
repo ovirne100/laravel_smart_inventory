@@ -19,7 +19,7 @@ class ProductService
             $query->priceRange($filters['min_price'], $filters['max_price']);
         }
 
-        return $query->paginate(10);
+        return $query->paginate(100);
     }
 
     /**
@@ -57,6 +57,26 @@ class ProductService
         $product->update($data);
         return $product;
     }
+
+
+    public function list(array $filters = [])
+    {
+        $search = $filters['search'] ?? null;
+        $perPage = (int)($filters['perPage'] ?? 100);
+
+        $query = Product::query();
+
+        if ($search) {
+            $query->where(function ($q) use ($search) {
+                $q->where('name', 'like', "%$search%")
+                  ->orWhere('reference', 'like', "%$search%")
+                  ->orWhere('batch', 'like', "%$search%");
+            });
+        }
+
+        return $query->orderBy('name')->paginate($perPage);
+    }
+
 
     public function delete(Product $product): bool
     {

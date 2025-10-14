@@ -41,12 +41,9 @@ class ProductController extends Controller
      * Crear un nuevo producto junto con su inventario inicial
      */
 
-public function store(Request $request)
-{
-    Log::info('📥 Datos recibidos para crear producto:', $request->all());
-
-    try {
-        // Validación básica (opcional)
+    public function store(Request $request)
+    {
+        // Validar los datos recibidos (permitir opcionales como en el frontend)
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'reference' => 'nullable|string|max:255',
@@ -142,4 +139,11 @@ public function store(Request $request)
             'message' => 'Producto eliminado correctamente.'
         ]);
     }
+
+    public function getSuppliers($productId)
+{
+    $product = \App\Models\Product::with('suppliers')->findOrFail($productId);
+    return response()->json($product->suppliers);
+}
+
 }
