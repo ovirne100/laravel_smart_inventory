@@ -20,7 +20,6 @@ use App\Http\Controllers\ExitDetailController;
 use App\Http\Controllers\InventoryDetailController;
 use App\Http\Controllers\SupplierController;
 use App\Http\Controllers\ProductSupplierController;
-<<<<<<< HEAD
 use App\Http\Controllers\DashboardController;
 
 /*
@@ -34,9 +33,6 @@ use App\Http\Controllers\DashboardController;
 
 // ✅ Ruta de prueba básica
 Route::get('/ping', fn() => response()->json(['message' => 'API funcionando correctamente 🚀']));
-=======
-use App\Models\ExitDetail;
->>>>>>> 0ed22cfdc47b44ea2a0de0d18550105196679823
 
 // ==========================
 // 🟢 RUTAS PÚBLICAS
@@ -51,11 +47,11 @@ Route::post('categories/init', [CategoryController::class, 'init']);
 Route::post('categories/sync', [CategoryController::class, 'sync']);
 Route::apiResource('categories', CategoryController::class)->only(['index', 'show']);
 
-<<<<<<< HEAD
+
 // ==========================
 // 🟡 RUTAS PROTEGIDAS (Auth)
 // ==========================
-=======
+
 //entradas de productos
 Route::get('entries/form-data', [EntryController::class, 'formData']);
 Route::apiResource('entries', EntryController::class);
@@ -65,7 +61,7 @@ Route::apiResource('outputs', ExitDetailController::class);
 
 
 // Protected routes
->>>>>>> 0ed22cfdc47b44ea2a0de0d18550105196679823
+
 Route::middleware('auth:sanctum')->group(function () {
 
     // 🔐 Autenticación
