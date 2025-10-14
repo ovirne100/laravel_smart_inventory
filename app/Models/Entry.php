@@ -10,16 +10,17 @@ class Entry extends Model
     protected $fillable = [
         'product_id',
         'quantity',
-        'unit',       // agregado
-        'lot',        // agregado
+        'unit',               // unidad
+        'lot',                // lote
         'supplier_id',
-        'user_id',
-        'inventory_id'
+        'ubicacion_interna',  // nueva ubicación
+        'stock',              // nuevo stock
+        'stock_min',          // nuevo stock mínimo
     ];
 
-    protected array $allowIncluded = ['product', 'supplier', 'user', 'inventory'];
-    protected array $allowFilter   = ['id', 'product_id', 'supplier_id', 'user_id', 'inventory_id'];
-    protected array $allowSort     = ['id', 'quantity', 'product_id', 'inventory_id'];
+    protected array $allowIncluded = ['product', 'supplier'];
+    protected array $allowFilter   = ['id', 'product_id', 'supplier_id', 'quantity'];
+    protected array $allowSort     = ['id', 'quantity', 'product_id'];
 
     /*
      |---------------------------------------------------------------------------
@@ -34,16 +35,6 @@ class Entry extends Model
     public function supplier()
     {
         return $this->belongsTo(Supplier::class, 'supplier_id');
-    }
-
-    public function user()
-    {
-        return $this->belongsTo(User::class, 'user_id');
-    }
-
-    public function inventory()
-    {
-        return $this->belongsTo(Inventory::class, 'inventory_id');
     }
 
     /*

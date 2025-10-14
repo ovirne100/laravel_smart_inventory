@@ -32,7 +32,19 @@ class EntryController extends Controller
      */
     public function store(Request $request)
     {
-        $entry = $this->entryService->createEntry($request);
+        // Validación de los campos según tu formulario
+        $validated = $request->validate([
+            'product_id'        => 'required|exists:products,id',
+            'quantity'          => 'required|integer|min:1',
+            'unit'              => 'nullable|string|max:20',
+            'lot'               => 'nullable|string|max:50',
+            'supplier_id'       => 'required|exists:suppliers,id',
+            'ubicacion_interna' => 'required|string|max:255',
+            'stock'             => 'required|integer|min:0',
+            'stock_min'         => 'required|integer|min:0',
+        ]);
+
+        $entry = $this->entryService->createEntry($validated);
 
         return response()->json([
             'message' => 'Entrada creada exitosamente',
@@ -58,7 +70,18 @@ class EntryController extends Controller
      */
     public function update(Request $request, $id)
     {
-        $entry = $this->entryService->updateEntry($request, $id);
+        $validated = $request->validate([
+            'product_id'        => 'sometimes|exists:products,id',
+            'quantity'          => 'sometimes|integer|min:1',
+            'unit'              => 'sometimes|string|max:20',
+            'lot'               => 'sometimes|string|max:50',
+            'supplier_id'       => 'sometimes|exists:suppliers,id',
+            'ubicacion_interna' => 'sometimes|string|max:255',
+            'stock'             => 'sometimes|integer|min:0',
+            'stock_min'         => 'sometimes|integer|min:0',
+        ]);
+
+        $entry = $this->entryService->updateEntry($validated, $id);
 
         return response()->json([
             'message' => 'Entrada actualizada exitosamente',

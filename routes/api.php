@@ -21,6 +21,7 @@ use App\Http\Controllers\InventoryDetailController;
 use App\Http\Controllers\SupplierController;
 use App\Http\Controllers\ProductSupplierController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\OutputController;
 
 /*
 |--------------------------------------------------------------------------
@@ -41,6 +42,22 @@ Route::post('register', [AuthController::class, 'register']);
 Route::post('login', [AuthController::class, 'login']);
 Route::get('roles-public', [RoleController::class, 'getRolesForRegister']);
 Route::post('roles-public', [RoleController::class, 'store']);
+
+
+    // ======================
+    // 📊 Dashboard
+    // ======================
+   // Route::get('dashboard/summary', [DashboardController::class, 'summary']);
+
+// ==========================
+// 🟡 RUTAS PROTEGIDAS (Auth)
+// ==========================
+Route::middleware('auth:sanctum')->group(function () {
+
+    // 🔐 Autenticación
+    Route::post('logout', [AuthController::class, 'logout']);
+    Route::get('profile', [UserController::class, 'profile']);
+    Route::get('user', [AuthController::class, 'me']);
 
 // Inicialización o sincronización de categorías
 Route::post('categories/init', [CategoryController::class, 'init']);
@@ -74,10 +91,11 @@ Route::apiResource('categories', CategoryController::class)->only(['index', 'sho
     Route::apiResource('entry-notes', EntryNoteController::class);
 
     // Salidas (renombrado a ProductExitController)
-    Route::get('product-exits/summary', [ProductExitController::class, 'summary']);
-    Route::get('product-exits/form-data', [ProductExitController::class, 'formData']);
-    Route::apiResource('product-exits', ProductExitController::class);
-    Route::apiResource('exit-details', ExitDetailController::class);
+   Route::get('/outputs/summary', [OutputController::class, 'summary']);
+
+    Route::get('/outputs/form-data', [OutputController::class, 'formData']);
+    Route::apiResource('/outputs', OutputController::class);
+    Route::apiResource('/exit-details', ExitDetailController::class);
 
     // ======================
     // 🛍️ Órdenes y Dependencias
@@ -105,20 +123,6 @@ Route::apiResource('categories', CategoryController::class)->only(['index', 'sho
     Route::post('alerts/check/{inventory}', [AlertController::class, 'checkStockRoute']);
     Route::get('alerts/test/{inventory}', [AlertController::class, 'test']);
 
-    // ======================
-    // 📊 Dashboard
-    // ======================
-   // Route::get('dashboard/summary', [DashboardController::class, 'summary']);
-
-// ==========================
-// 🟡 RUTAS PROTEGIDAS (Auth)
-// ==========================
-Route::middleware('auth:sanctum')->group(function () {
-
-    // 🔐 Autenticación
-    Route::post('logout', [AuthController::class, 'logout']);
-    Route::get('profile', [UserController::class, 'profile']);
-    Route::get('user', [AuthController::class, 'me']);
 
     // ======================
     // 🧑‍💼 RUTAS SOLO ADMIN
