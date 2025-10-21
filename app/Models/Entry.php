@@ -14,7 +14,8 @@ class Entry extends Model
         'lot',        // agregado
         'supplier_id',
         'user_id',
-        'inventory_id'
+        'inventory_id',
+        'Warehouse_id'
     ];
 
     protected array $allowIncluded = ['product', 'supplier', 'user', 'inventory'];

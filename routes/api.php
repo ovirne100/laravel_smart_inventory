@@ -1,5 +1,6 @@
 <?php
 
+
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\UserController;
@@ -20,39 +21,32 @@ use App\Http\Controllers\ExitDetailController;
 use App\Http\Controllers\InventoryDetailController;
 use App\Http\Controllers\SupplierController;
 use App\Http\Controllers\ProductSupplierController;
-use App\Http\Controllers\DashboardController;
+use App\Models\ExitDetail;
+use App\Http\Controllers\ReportController;
 
-/*
-|--------------------------------------------------------------------------
-| API Routes
-|--------------------------------------------------------------------------
-| Archivo fusionado y optimizado de rutas del backend.
-| Estructurado en secciones: públicas, protegidas y admin.
-|--------------------------------------------------------------------------
-*/
-
-// ✅ Ruta de prueba básica
-Route::get('/ping', fn() => response()->json(['message' => 'API funcionando correctamente 🚀']));
-
-// ==========================
-// 🟢 RUTAS PÚBLICAS
-// ==========================
+// Public routes
 Route::post('register', [AuthController::class, 'register']);
 Route::post('login', [AuthController::class, 'login']);
 Route::get('roles-public', [RoleController::class, 'getRolesForRegister']);
 Route::post('roles-public', [RoleController::class, 'store']);
 
-// Inicialización o sincronización de categorías
-Route::post('categories/init', [CategoryController::class, 'init']);
-Route::post('categories/sync', [CategoryController::class, 'sync']);
-Route::apiResource('categories', CategoryController::class)->only(['index', 'show']);
+//categiries rutas
+Route::post('/categories/init', [CategoryController::class, 'init']);
+Route::get('/categories', [CategoryController::class, 'index']);
+Route::post('/categories/sync', [CategoryController::class, 'sync']);
 
 
-// ==========================
-// 🟡 RUTAS PROTEGIDAS (Auth)
-// ==========================
 
-//entradas de productos
+// Protected routes
+Route::middleware('auth:sanctum')->group(function () {
+
+    // Auth
+    Route::post('logout', [AuthController::class, 'logout']);
+    Route::get('profile', [UserController::class, 'profile']);
+      Route::get('user', [AuthController::class, 'me']); // Para obtener usuario actual
+
+      //datos del formulario de entrada
+      //entradas de productos
 Route::get('entries/form-data', [EntryController::class, 'formData']);
 Route::apiResource('entries', EntryController::class);
 //salidas de productos
@@ -60,59 +54,29 @@ Route::get('outputs/form-data', [ExitDetailController::class, 'formData']);
 Route::apiResource('outputs', ExitDetailController::class);
 
 
-// Protected routes
-
-Route::middleware('auth:sanctum')->group(function () {
-
-    // 🔐 Autenticación
-    Route::post('logout', [AuthController::class, 'logout']);
-    Route::get('profile', [UserController::class, 'profile']);
-    Route::get('user', [AuthController::class, 'me']);
-
-    // ======================
-    // 📦 Productos e Inventarios
-    // ======================
+    // Productos
     Route::apiResource('products', ProductController::class);
+
+    // Rutas comunes protegidas
+    Route::apiResource('dep-buys', DepBuyController::class);
+    Route::apiResource('orders', OrderController::class);
     Route::apiResource('product-details', ProductDetailController::class);
+    //Route::apiResource('categories', CategoryController::class);
     Route::apiResource('inventories', InventoryController::class);
-    Route::post('inventories/{id}/adjust', [InventoryController::class, 'adjustStock']);
-    Route::apiResource('inventory-details', InventoryDetailController::class);
-
-    // ======================
-    // 🏭 Almacenes y ubicaciones
-    // ======================
-    Route::apiResource('warehouses', WarehouseController::class);
     Route::apiResource('locations', LocationController::class);
-
-
-    // ======================
-    // 🧾 Entradas / Salidas
-    // ======================
-    // Entradas
-    Route::get('entries/summary', [EntryController::class, 'summary']);
-    Route::get('entries/form-data', [EntryController::class, 'formData']);
+    Route::apiResource('warehouses', WarehouseController::class);
+    Route::apiResource('alerts', AlertController::class);
     Route::apiResource('entries', EntryController::class);
     Route::apiResource('entry-notes', EntryNoteController::class);
-
-    // Salidas (renombrado a ProductExitController)
-    Route::get('product-exits/summary', [ProductExitController::class, 'summary']);
-    Route::get('product-exits/form-data', [ProductExitController::class, 'formData']);
     Route::apiResource('product-exits', ProductExitController::class);
     Route::apiResource('exit-details', ExitDetailController::class);
+    Route::apiResource('inventory-details', InventoryDetailController::class);
 
-    // ======================
-    // 🛍️ Órdenes y Dependencias
-    // ======================
-    Route::apiResource('orders', OrderController::class);
-    Route::apiResource('dep-buys', DepBuyController::class);
-
-    // ======================
-    // 🧑‍🤝‍🧑 Proveedores y relaciones
-    // ======================
+    // Suppliers
     Route::apiResource('suppliers', SupplierController::class);
+    // Product-Supplier associations
     Route::apiResource('product-suppliers', ProductSupplierController::class);
-
-    // Relaciones producto <-> proveedor
+    // Association endpoints: products of a supplier
     Route::get('suppliers/{supplier}/products', [SupplierController::class, 'products']);
     Route::post('suppliers/{supplier}/products', [SupplierController::class, 'syncProducts']);
     Route::post('suppliers/{supplier}/products/attach', [SupplierController::class, 'attachProducts']);
@@ -129,25 +93,23 @@ Route::get('suppliers/{supplierId}/products', [SupplierController::class, 'getPr
 // 🔹 Obtener todos los proveedores de un producto (con detalles del pivot)
 Route::get('products/{productId}/suppliers', [ProductController::class, 'getSuppliers']);
 
-    // ======================
-    // 🚨 Alertas
-    // ======================
-    Route::apiResource('alerts', AlertController::class);
-    Route::patch('alerts/{id}/status', [AlertController::class, 'resolve']);
-    Route::post('alerts/check/{inventory}', [AlertController::class, 'checkStockRoute']);
-    Route::get('alerts/test/{inventory}', [AlertController::class, 'test']);
+// eliminar una asociación específica entre producto y proveedor
+Route::post('/suppliers/detach-product', [SupplierController::class, 'detachProduct']);
 
-    // ======================
-    // 📊 Dashboard
-    // ======================
-   // Route::get('dashboard/summary', [DashboardController::class, 'summary']);
 
-    // ======================
-    // 🧑‍💼 RUTAS SOLO ADMIN
-    // ======================
+
+    // Rutas solo admin
     Route::middleware('role:admin')->group(function () {
         Route::apiResource('users', UserController::class);
-        Route::post('users/{id}/change-password', [UserController::class, 'changePassword']);
         Route::apiResource('roles', RoleController::class);
     });
 });
+
+
+Route::get('reports/products', [ReportController::class, 'productMovements']);
+Route::get('reports/alerts', [ReportController::class, 'alertReport']);
+Route::get('reports/inventory', [ReportController::class, 'inventoryReport']);
+
+// Exports a excel y pdf
+Route::get('reports/products/export/excel', [ReportController::class, 'exportProductsExcel']);
+Route::get('reports/products/export/pdf', [ReportController::class, 'exportProductsPdf']);

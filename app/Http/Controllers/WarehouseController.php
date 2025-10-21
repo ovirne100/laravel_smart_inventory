@@ -5,61 +5,71 @@ namespace App\Http\Controllers;
 use App\Models\Warehouse;
 use Illuminate\Http\Request;
 
-class WarehouseController
+class WarehouseController extends Controller
 {
     /**
-     * Display a listing of the resource.
+     * 📋 Listar todos los almacenes
      */
     public function index()
     {
-        //
+        return response()->json(Warehouse::all());
     }
 
     /**
-     * Show the form for creating a new resource.
-     */
-    public function create()
-    {
-        //
-    }
-
-    /**
-     * Store a newly created resource in storage.
+     * 🏗️ Crear un nuevo almacén
      */
     public function store(Request $request)
     {
-        //
+        $validated = $request->validate([
+            'name'     => 'required|string|max:50',
+            'address'  => 'required|string|max:100',
+            'capacity' => 'required|string|max:100',
+        ]);
+
+        $warehouse = Warehouse::create($validated);
+
+        return response()->json([
+            'message' => 'Warehouse creado exitosamente',
+            'data'    => $warehouse
+        ], 201);
     }
 
     /**
-     * Display the specified resource.
+     * 🔍 Mostrar un almacén específico
      */
     public function show(Warehouse $warehouse)
     {
-        //
+        return response()->json($warehouse);
     }
 
     /**
-     * Show the form for editing the specified resource.
-     */
-    public function edit(Warehouse $warehouse)
-    {
-        //
-    }
-
-    /**
-     * Update the specified resource in storage.
+     * ✏️ Actualizar un almacén
      */
     public function update(Request $request, Warehouse $warehouse)
     {
-        //
+        $validated = $request->validate([
+            'name'     => 'sometimes|string|max:50',
+            'address'  => 'sometimes|string|max:100',
+            'capacity' => 'sometimes|string|max:100',
+        ]);
+
+        $warehouse->update($validated);
+
+        return response()->json([
+            'message' => 'Warehouse actualizado exitosamente',
+            'data'    => $warehouse
+        ]);
     }
 
     /**
-     * Remove the specified resource from storage.
+     * 🗑️ Eliminar un almacén
      */
     public function destroy(Warehouse $warehouse)
     {
-        //
+        $warehouse->delete();
+
+        return response()->json([
+            'message' => 'Warehouse eliminado exitosamente'
+        ]);
     }
 }

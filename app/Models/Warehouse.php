@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Builder;
 
 class Warehouse extends Model
 {
-    protected $fillable = ['name', 'address'];
+    protected $fillable = ['name', 'address', 'capacity'];
 
    protected $allowIncluded = ['internalLocations']; //las posibles Querys que se pueden realizar
     protected $allowFilter = ['id', 'name'];

@@ -91,11 +91,12 @@ class SupplierController extends Controller
                 'address' => 'nullable|string|max:150',
             ]);
 
-            $data = [];
-            if (array_key_exists('name', $validated)) $data['name'] = $validated['name'];
-            if (array_key_exists('email', $validated)) $data['contact_email'] = $validated['email'];
-            if (array_key_exists('phone', $validated)) $data['phone'] = $validated['phone'];
-            if (array_key_exists('address', $validated)) $data['address'] = $validated['address'];
+           $data = [
+    'name' => $validated['name'],
+    'email' => $validated['email'] ?? null,
+    'phone' => $validated['phone'] ?? null,
+    'address' => $validated['address'] ?? null,
+];
 
             return $this->service->update($supplier, $data);
         } catch (\Exception $e) {
@@ -164,16 +165,21 @@ class SupplierController extends Controller
         return response()->json(['message' => 'Products synced']);
     }
 
-    public function detachProduct(Supplier $supplier, Product $product)
-    {
-        $supplier->products()->detach($product->id);
-        return response()->noContent();
-    }
+public function detachProduct($supplierId, $productId)
+{
+    $supplier = Supplier::findOrFail($supplierId);
+    $supplier->products()->detach($productId);
+
+    return response()->json(['message' => 'Producto desvinculado correctamente']);
+}
+
+
 
     public function getProducts($supplierId)
 {
     $supplier = \App\Models\Supplier::with('products')->findOrFail($supplierId);
     return response()->json($supplier->products);
 }
+
 
 }

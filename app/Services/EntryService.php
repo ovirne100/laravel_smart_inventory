@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Models\Supplier;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Auth;
 
 class EntryService
 {
@@ -37,29 +38,50 @@ class EntryService
     /**
      * ➕ Crear nueva entrada
      */
-    public function createEntry(Request $request)
-    {
-        $validated = $request->validate([
-            'product_id'   => 'required|exists:products,id',
-            'quantity'     => 'required|integer|min:1',
-            'unit'         => 'nullable|string|max:20',
-            'lot'          => 'nullable|string|max:50',
-            'supplier_id'  => 'required|exists:suppliers,id',
-            'user_id'      => 'required|exists:users,id',
-            'inventory_id' => 'required|exists:inventories,id',
-        ]);
+   public function createEntry(Request $request)
+{
+    $validated = $request->validate([
+        'product_id'  => 'required|exists:products,id',
+        'quantity'    => 'required|integer|min:1',
+        'unit'        => 'nullable|string|max:20',
+        'lot'         => 'nullable|string|max:50',
+        'supplier_id' => 'required|exists:suppliers,id',
+        'user_id'     => 'required|exists:users,id',
+        'warehouse_id' => 'required|exists:warehouses,id',
 
-        return DB::transaction(function () use ($validated) {
-            $entry = Entry::create($validated);
+    ]);
 
-            // Aumentar stock
-            $inventory = Inventory::findOrFail($validated['inventory_id']);
-            $inventory->stock += $validated['quantity'];
-            $inventory->save();
+    return DB::transaction(function () use ($validated) {
+    // 🔐 Intentar obtener el usuario autenticado o usar el pasado en la petición
+   $userId = Auth::id() ?? ($validated['user_id'] ?? 1);
+ // ← valor por defecto
 
-            return $entry->load(['product', 'supplier', 'user']);
-        });
-    }
+    // 🏭 Crear o recuperar el inventario correspondiente al producto y almacén
+    $inventory = Inventory::firstOrCreate(
+        [
+            'product_id' => $validated['product_id'],
+            'warehouse_id' => $validated['warehouse_id'] ?? 1, // puedes fijar un almacén por defecto
+        ],
+        [
+            'stock' => 0,
+            'user_id' => $userId,
+        ]
+    );
+
+    // ➕ Crear la entrada vinculada al inventario
+    $entry = \App\Models\Entry::create(array_merge($validated, [
+        'inventory_id' => $inventory->id,
+        'user_id' => $userId,
+    ]));
+
+    // 🔄 Actualizar el stock
+    $inventory->stock += $validated['quantity'];
+    $inventory->save();
+
+    return $entry->load(['product', 'supplier', 'user']);
+});
+
+}
 
     /**
      * 🔍 Obtener una entrada por ID
