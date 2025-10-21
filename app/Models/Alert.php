@@ -2,111 +2,93 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Builder;
 
 class Alert extends Model
 {
+    use HasFactory;
+
     protected $fillable = [
-        'date',
-        'alert_type',
         'product_id',
-        'status',
         'inventory_id',
+        'alert_type',
+        'status',
         'message',
-        'resolved_at',
+        'date',
+        'resolved_at'
     ];
 
-    // Permitir relaciones, filtros y ordenamientos desde las querys
-    protected array $allowIncluded = ['inventory.product', 'inventory.user'];
-    protected array $allowFilter   = ['id', 'date', 'alert_type', 'status', 'product_id', 'inventory_id', 'resolved_at'];
-    protected array $allowSort     = ['id', 'date', 'alert_type', 'status', 'resolved_at'];
+    protected $casts = [
+        'date' => 'datetime',
+        'resolved_at' => 'datetime',
+    ];
 
-    // ================== RELACIONES ==================
-    public function inventory()
-    {
-        return $this->belongsTo(Inventory::class, 'inventory_id');
-    }
+    // ✅ CAMBIADO: "resuelto" → "resuelta" (femenino, natural en español)
+    const TYPE_LOW_STOCK = 'bajo_stock';
+    const TYPE_OUT_OF_STOCK = 'sin_stock';
+    const STATUS_ACTIVE = 'pendiente';
+    const STATUS_RESOLVED = 'resuelta';  // ✅ AHORA ES "resuelta"
 
+    // Relaciones
     public function product()
     {
-        return $this->belongsTo(Product::class, 'product_id');
+        return $this->belongsTo(Product::class);
     }
 
-    // ================== SCOPES ==================
-
-    /**
-     * 🔗 Carga relaciones dinámicamente (usando ?included=inventory.product)
-     */
-    public function scopeIncluded(Builder $query)
+    public function inventory()
     {
-        $relations = explode(',', request('included', ''));
-        $relations = array_intersect($relations, $this->allowIncluded);
-
-        if (!empty($relations)) {
-            $query->with($relations);
-        }
-
-        return $query;
+        return $this->belongsTo(Inventory::class);
     }
 
-    /**
-     * 🔍 Filtra resultados (?filter[field]=value o ?field=value)
-     */
-    public function scopeFilter(Builder $query)
+    // Scopes
+    public function scopeActive($query)
     {
-        if (empty($this->allowFilter)) {
-            return $query;
-        }
-
-        $filters = request('filter', []) + request()->only($this->allowFilter);
-
-        foreach ($filters as $field => $value) {
-            if (in_array($field, $this->allowFilter)) {
-                if (is_numeric($value)) {
-                    $query->where($field, $value);
-                } elseif ($this->isDate($value)) {
-                    $query->whereDate($field, $value);
-                } else {
-                    $query->where($field, 'LIKE', '%' . $value . '%');
-                }
-            }
-        }
-
-        return $query;
+        return $query->where('status', self::STATUS_ACTIVE);
     }
 
-    /**
-     * ↕️ Ordena resultados (?sort=-date,alert_type)
-     */
-    public function scopeSort(Builder $query)
+    public function scopeResolved($query)
     {
-        $sortFields = explode(',', request('sort', ''));
-
-        foreach ($sortFields as $field) {
-            $direction = str_starts_with($field, '-') ? 'desc' : 'asc';
-            $field = ltrim($field, '-');
-
-            if (in_array($field, $this->allowSort)) {
-                $query->orderBy($field, $direction);
-            }
-        }
-
-        return $query;
+        return $query->where('status', self::STATUS_RESOLVED);
     }
 
-    /**
-     * 📄 Retorna resultados paginados o completos (?perPage=10)
-     */
-    public function scopeGetOrPaginate(Builder $query)
+    public function scopeLowStock($query)
     {
-        $perPage = intval(request('perPage', 0));
-        return $perPage > 0 ? $query->paginate($perPage) : $query->get();
+        return $query->where('alert_type', self::TYPE_LOW_STOCK);
     }
 
-    // ================== HELPERS ==================
-    protected function isDate($value): bool
+    public function scopeOutOfStock($query)
     {
-        return strtotime($value) !== false;
+        return $query->where('alert_type', self::TYPE_OUT_OF_STOCK);
+    }
+
+    // Helpers
+    public function isActive(): bool
+    {
+        return $this->status === self::STATUS_ACTIVE;
+    }
+
+    public function isResolved(): bool
+    {
+        return $this->status === self::STATUS_RESOLVED;
+    }
+
+    // Accessors para labels
+    public function getStatusLabelAttribute(): string
+    {
+        return match($this->status) {
+            self::STATUS_ACTIVE => 'Pendiente',
+            self::STATUS_RESOLVED => 'Resuelta',  // ✅ También cambiar aquí
+            default => 'Desconocido'
+        };
+    }
+
+    public function getTypeLabelAttribute(): string
+    {
+        return match($this->alert_type) {
+            self::TYPE_LOW_STOCK => 'Stock Bajo',
+            self::TYPE_OUT_OF_STOCK => 'Sin Stock',
+            default => 'Desconocido'
+        };
     }
 }

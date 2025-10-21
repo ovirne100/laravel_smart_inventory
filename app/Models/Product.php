@@ -3,12 +3,17 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
-   use App\Models\Supplier;
+use App\Models\Supplier;
 
 class Product extends Model
 {
     protected $fillable = [
-        'name', 'category_id', 'reference', 'unit_measurement', 'batch', 'expiration_date',
+        'name',
+        'category_id',
+        'reference',
+        'unit_measurement',
+        'batch',
+        'expiration_date',
         'image'
     ];
 
@@ -16,42 +21,58 @@ class Product extends Model
         'expiration_date' => 'date:Y-m-d',
     ];
 
-    // Accessor para la URL completa de la imagen
+    /** 🔹 Accessor para URL completa de imagen */
     public function getImageUrlAttribute()
     {
         if ($this->image) {
-            return url($this->image); // ejemplo: http://localhost/uploads/products/xxxx.jpg
+            return url($this->image);
         }
         return null;
     }
 
-    public function categoria() { return $this->belongsTo(Category::class, 'category_id'); }
-    public function detalles() { return $this->hasMany(ProductDetail::class); }
-
-       // Scope para filtrar por categoría
-    public function scopeCategory($query, $categoryId)
+    /** 🔹 Relaciones */
+    public function category()
     {
-        if ($categoryId) {
-            return $query->where('category_id', $categoryId);
+        return $this->belongsTo(Category::class, 'category_id');
+    }
+
+    // Alias en español (mantén ambas si quieres compatibilidad)
+    public function categoria()
+    {
+        return $this->category();
+    }
+
+    public function detalles()
+    {
+        return $this->hasMany(ProductDetail::class);
+    }
+
+    /** 🔹 Relación con inventario */
+    public function inventory()
+    {
+        return $this->hasOne(Inventory::class, 'product_id');
+    }
+
+    /** 🔹 Scopes - ¡RENOMBRADOS para evitar conflictos! */
+
+    // ✅ Scope renombrado: scopeCategory -> scopeFilterByCategory
+    public function scopeFilterByCategory($query, $category = null)
+    {
+        if ($category !== null) {
+            return $query->where('category_id', $category);
         }
         return $query;
     }
 
-
-    // Scope para filtrar por estado (activo/inactivo)
-    public function scopeStatus($query, $status)
+    public function scopeStatus($query, $status = null)
     {
-        if ($status) {
+        if ($status !== null) {
             return $query->where('status', $status);
         }
         return $query;
     }
 
-
-
-
-    // Scope para filtrar por rango de precio
-    public function scopePriceRange($query, $min, $max)
+    public function scopePriceRange($query, $min = null, $max = null)
     {
         if ($min !== null && $max !== null) {
             return $query->whereBetween('price', [$min, $max]);
@@ -59,8 +80,7 @@ class Product extends Model
         return $query;
     }
 
-     // Scope para búsqueda por nombre parcial
-    public function scopeSearch($query, $term)
+    public function scopeSearch($query, $term = null)
     {
         if ($term) {
             return $query->where('name', 'like', "%$term%");
@@ -69,11 +89,10 @@ class Product extends Model
     }
 
     // Relación con Supplier (muchos a muchos)
-public function suppliers()
-{
-    return $this->belongsToMany(Supplier::class, 'product_supplier', 'product_id', 'supplier_id')
-                ->withPivot('unit_cost', 'supplier_reference')
-                ->withTimestamps();
-}
-
+    public function suppliers()
+    {
+        return $this->belongsToMany(Supplier::class, 'product_supplier', 'product_id', 'supplier_id')
+                    ->withPivot('unit_cost', 'supplier_reference')
+                    ->withTimestamps();
+    }
 }

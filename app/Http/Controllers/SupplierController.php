@@ -10,8 +10,9 @@ use Illuminate\Http\Request;
 class SupplierController extends Controller
 {
     public function __construct(private SupplierService $service) {}
+
     /**
-     * Display a listing of the resource.
+     * Listar proveedores
      */
     public function index(Request $request)
     {
@@ -19,15 +20,7 @@ class SupplierController extends Controller
     }
 
     /**
-     * Show the form for creating a new resource.
-     */
-    public function create()
-    {
-        //
-    }
-
-    /**
-     * Store a newly created resource in storage.
+     * Crear nuevo proveedor
      */
     public function store(Request $request)
     {
@@ -37,15 +30,15 @@ class SupplierController extends Controller
                 'email' => 'nullable|email|max:100',
                 'phone' => 'nullable|string|max:20',
                 'address' => 'nullable|string|max:150',
+                'tax_id' => 'nullable|string|max:50',
             ]);
 
-            // Mapear campos del frontend a la estructura de la BD
             $data = [
                 'name' => $validated['name'],
-                'contact_email' => $validated['email'] ?? 'temp@example.com', // Temporal para evitar error
-                'phone' => $validated['phone'] ?? '0000000000', // Temporal
-                'address' => $validated['address'] ?? 'Dirección temporal', // Temporal
-                'tax_id' => 'TEMP-' . time(), // Temporal único
+                'contact_email' => $validated['email'] ?? 'temp@example.com',
+                'phone' => $validated['phone'] ?? '0000000000',
+                'address' => $validated['address'] ?? 'Dirección temporal',
+                'tax_id' => $validated['tax_id'] ?? 'TEMP-' . time(),
                 'status' => 'Active',
             ];
 
@@ -60,26 +53,16 @@ class SupplierController extends Controller
     }
 
     /**
-     * Display the specified resource.
+     * Mostrar proveedor específico con productos y categorías
      */
     public function show(Supplier $supplier)
     {
-        $supplier->load(['products' => function ($q) {
-            $q->with('categoria');
-        }]);
+        $supplier->load(['products.categoria']);
         return $supplier;
     }
 
     /**
-     * Show the form for editing the specified resource.
-     */
-    public function edit(Supplier $supplier)
-    {
-        //
-    }
-
-    /**
-     * Update the specified resource in storage.
+     * Actualizar proveedor
      */
     public function update(Request $request, Supplier $supplier)
     {
@@ -89,14 +72,15 @@ class SupplierController extends Controller
                 'email' => 'nullable|email|max:100',
                 'phone' => 'nullable|string|max:20',
                 'address' => 'nullable|string|max:150',
+                'tax_id' => 'nullable|string|max:50',
             ]);
 
-           $data = [
-    'name' => $validated['name'],
-    'email' => $validated['email'] ?? null,
-    'phone' => $validated['phone'] ?? null,
-    'address' => $validated['address'] ?? null,
-];
+            $data = [];
+            if (isset($validated['name'])) $data['name'] = $validated['name'];
+            if (isset($validated['email'])) $data['contact_email'] = $validated['email'];
+            if (isset($validated['phone'])) $data['phone'] = $validated['phone'];
+            if (isset($validated['address'])) $data['address'] = $validated['address'];
+            if (isset($validated['tax_id'])) $data['tax_id'] = $validated['tax_id'];
 
             return $this->service->update($supplier, $data);
         } catch (\Exception $e) {
@@ -108,23 +92,35 @@ class SupplierController extends Controller
     }
 
     /**
-     * Remove the specified resource from storage.
+     * Eliminar proveedor
      */
-    public function destroy(Supplier $supplier)
+    public function destroy($id)
     {
-        $this->service->delete($supplier);
-        return response()->noContent();
+        try {
+            $supplier = Supplier::findOrFail($id);
+            $supplier->delete();
+
+            return response()->json(['message' => 'Proveedor eliminado correctamente'], 200);
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Error eliminando proveedor',
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
 
-    // Extra endpoints
+    /**
+     * Productos asociados a un proveedor
+     */
     public function products(Supplier $supplier)
     {
-        $supplier->load(['products' => function ($q) {
-            $q->with('categoria');
-        }]);
+        $supplier->load(['products.categoria']);
         return $supplier->products;
     }
 
+    /**
+     * Asociar productos sin eliminar existentes
+     */
     public function attachProducts(Request $request, Supplier $supplier)
     {
         $data = $request->validate([
@@ -145,6 +141,9 @@ class SupplierController extends Controller
         return response()->json(['message' => 'Productos asociados correctamente']);
     }
 
+    /**
+     * Sincronizar productos (elimina los que no están en el array)
+     */
     public function syncProducts(Request $request, Supplier $supplier)
     {
         $data = $request->validate([
@@ -162,24 +161,26 @@ class SupplierController extends Controller
             ];
         }
         $supplier->products()->sync($syncData);
-        return response()->json(['message' => 'Products synced']);
+        return response()->json(['message' => 'Productos sincronizados correctamente']);
     }
 
-public function detachProduct($supplierId, $productId)
-{
-    $supplier = Supplier::findOrFail($supplierId);
-    $supplier->products()->detach($productId);
+    /**
+     * Desvincular un producto
+     */
+    public function detachProduct($supplierId, $productId)
+    {
+        $supplier = Supplier::findOrFail($supplierId);
+        $supplier->products()->detach($productId);
 
-    return response()->json(['message' => 'Producto desvinculado correctamente']);
-}
+        return response()->json(['message' => 'Producto desvinculado correctamente']);
+    }
 
-
-
+    /**
+     * Obtener productos de un proveedor
+     */
     public function getProducts($supplierId)
-{
-    $supplier = \App\Models\Supplier::with('products')->findOrFail($supplierId);
-    return response()->json($supplier->products);
-}
-
-
+    {
+        $supplier = Supplier::with('products')->findOrFail($supplierId);
+        return response()->json($supplier->products);
+    }
 }
