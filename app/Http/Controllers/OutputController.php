@@ -16,7 +16,7 @@ class OutputController extends Controller
     }
 
     /**
-     * 📄 Listar todas las salidas
+     * 📦 Listar todas las salidas
      */
     public function index()
     {
@@ -42,19 +42,21 @@ class OutputController extends Controller
             'lot'          => 'nullable|string|max:50',
         ]);
 
+        // ✅ Añadir el usuario autenticado
         $validated['user_id'] = Auth::id();
 
         $result = $this->service->create($validated);
 
+        // Si hay error lógico, devuelve 422 (Unprocessable Entity)
         return response()->json([
             'status'  => $result['error'] ? 'error' : 'success',
             'message' => $result['message'],
             'data'    => $result['data'] ?? null,
-        ], $result['error'] ? 400 : 201);
+        ], $result['error'] ? 422 : 201);
     }
 
     /**
-     * 🔍 Mostrar detalles de una salida
+     * 📄 Mostrar detalles
      */
     public function show($id)
     {
@@ -102,11 +104,11 @@ class OutputController extends Controller
             'status'  => $result['error'] ? 'error' : 'success',
             'message' => $result['message'],
             'data'    => $result['data'] ?? null,
-        ], $result['error'] ? 400 : 200);
+        ], $result['error'] ? 422 : 200);
     }
 
     /**
-     * ❌ Eliminar salida
+     * 🗑️ Eliminar salida
      */
     public function destroy($id)
     {
@@ -122,11 +124,11 @@ class OutputController extends Controller
         return response()->json([
             'status'  => $result['error'] ? 'error' : 'success',
             'message' => $result['message'],
-        ], $result['error'] ? 400 : 200);
+        ], $result['error'] ? 422 : 200);
     }
 
     /**
-     * 📊 Resumen de salidas
+     * 📊 Resumen
      */
     public function summary()
     {
@@ -138,7 +140,7 @@ class OutputController extends Controller
     }
 
     /**
-     * ⚙️ Datos para formularios
+     * 📋 Datos para formulario
      */
     public function formData()
     {

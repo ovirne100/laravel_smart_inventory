@@ -7,14 +7,14 @@ use Illuminate\Database\Eloquent\Builder;
 
 class Supplier extends Model
 {
-    protected $table = 'suppliers';
-
     protected $fillable = [
         'name',
-        'address',
         'email',
-        'phone'
+        'phone',
+        'address',
+        'tax_id', // <-- agrega esto
     ];
+
 
     // Listas blancas para includes, filtros y orden
     protected array $allowIncluded = ['products']; // puedes agregar relaciones aquí

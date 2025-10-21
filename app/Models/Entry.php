@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
@@ -6,68 +7,99 @@ use Illuminate\Database\Eloquent\Builder;
 
 class Entry extends Model
 {
-    // Campos rellenables
+    /*
+    |--------------------------------------------------------------------------
+    | 🔒 Campos rellenables (mass assignment)
+    |--------------------------------------------------------------------------
+    |
+    | Incluimos user_id porque el valor se asigna desde el backend
+    | (Auth::user()->id) antes de crear el registro con create().
+    |
+    */
     protected $fillable = [
         'product_id',
-        'quantity',
-        'unit',       // agregado
-        'lot',        // agregado
+        'quantity',           // Cantidad ingresada
+        'unit',               // Unidad de medida
+        'lot',                // Lote
         'supplier_id',
-        'user_id',
-        'inventory_id'
+        'ubicacion_interna',  // Ubicación interna
+        'min_stock',          // Stock mínimo
+        'stock',              // Stock actual
+        'user_id',            // Usuario autenticado que crea la entrada
     ];
 
-    protected array $allowIncluded = ['product', 'supplier', 'user', 'inventory'];
-    protected array $allowFilter   = ['id', 'product_id', 'supplier_id', 'user_id', 'inventory_id'];
-    protected array $allowSort     = ['id', 'quantity', 'product_id', 'inventory_id'];
+    /*
+    |--------------------------------------------------------------------------
+    | ⚙️ Filtros y relaciones permitidas
+    |--------------------------------------------------------------------------
+    */
+    protected array $allowIncluded = ['product', 'supplier'];
+    protected array $allowFilter   = ['id', 'product_id', 'supplier_id', 'quantity'];
+    protected array $allowSort     = ['id', 'quantity', 'product_id', 'created_at'];
 
     /*
-     |---------------------------------------------------------------------------
-     | Relaciones
-     |---------------------------------------------------------------------------
+    |--------------------------------------------------------------------------
+    | 🔗 Relaciones
+    |--------------------------------------------------------------------------
     */
+
+    /**
+     * 🔗 Relación con el producto
+     */
     public function product()
     {
         return $this->belongsTo(Product::class, 'product_id');
     }
 
+    /**
+     * 🔗 Relación con el proveedor
+     */
     public function supplier()
     {
         return $this->belongsTo(Supplier::class, 'supplier_id');
     }
 
+    /**
+     * 🔗 Relación con el usuario que registró la entrada
+     */
     public function user()
     {
         return $this->belongsTo(User::class, 'user_id');
     }
 
-    public function inventory()
-    {
-        return $this->belongsTo(Inventory::class, 'inventory_id');
-    }
-
     /*
-     |---------------------------------------------------------------------------
-     | Scopes
-     |---------------------------------------------------------------------------
+    |--------------------------------------------------------------------------
+    | 🔍 Scopes personalizados
+    |--------------------------------------------------------------------------
     */
-    public function scopeIncluded(Builder $query)
-    {
-        if (empty(request('included'))) return;
 
-        $relations = explode(',', request('included'));
+    /**
+     * Incluye relaciones permitidas mediante ?included=
+     *
+     * Ejemplo: /entries?included=product,supplier
+     */
+    public function scopeIncluded(Builder $query): void
+    {
+        $included = request('included');
+        if (empty($included)) return;
+
+        $relations = explode(',', $included);
         $allowIncluded = collect($this->allowIncluded);
 
         $relations = array_filter($relations, fn($relation) => $allowIncluded->contains($relation));
-
         $query->with($relations);
     }
 
-    public function scopeFilter(Builder $query)
+    /**
+     * Filtra resultados mediante ?filter[campo]=valor
+     *
+     * Ejemplo: /entries?filter[product_id]=1
+     */
+    public function scopeFilter(Builder $query): void
     {
-        if (empty(request('filter'))) return;
-
         $filters = request('filter');
+        if (empty($filters)) return;
+
         $allowFilter = collect($this->allowFilter);
 
         foreach ($filters as $filter => $value) {
@@ -83,11 +115,17 @@ class Entry extends Model
         }
     }
 
-    public function scopeSort(Builder $query)
+    /**
+     * Ordena resultados mediante ?sort=campo o ?sort=-campo
+     *
+     * Ejemplo: /entries?sort=-quantity
+     */
+    public function scopeSort(Builder $query): void
     {
-        if (empty(request('sort'))) return;
+        $sort = request('sort');
+        if (empty($sort)) return;
 
-        $sortFields = explode(',', request('sort'));
+        $sortFields = explode(',', $sort);
         $allowSort  = collect($this->allowSort);
 
         foreach ($sortFields as $sortField) {
@@ -104,14 +142,19 @@ class Entry extends Model
         }
     }
 
+    /**
+     * Devuelve paginación si existe ?perPage, de lo contrario todos los registros
+     *
+     * Ejemplo: /entries?perPage=10
+     */
     public function scopeGetOrPaginate(Builder $query)
     {
-        if (request('perPage')) {
-            $perPage = intval(request('perPage'));
-            if ($perPage > 0) {
-                return $query->paginate($perPage);
-            }
+        $perPage = request('perPage');
+
+        if ($perPage && intval($perPage) > 0) {
+            return $query->paginate(intval($perPage));
         }
+
         return $query->get();
     }
 }

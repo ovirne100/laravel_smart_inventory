@@ -4,137 +4,190 @@ namespace App\Services;
 
 use App\Models\Alert;
 use App\Models\Inventory;
-use App\Notifications\StockAlertNotification;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Notification;
+use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class AlertService
 {
     /**
-     * 🚨 Verifica el stock y crea, actualiza o resuelve alertas según sea necesario.
+     * Verifica el stock de un inventario y crea/actualiza alertas según corresponda
      */
-    public function checkStock(Inventory $inventory)
+    public function checkStock(Inventory $inventory): void
     {
-        $type = null;
-        $message = null;
+        $product = $inventory->product;
 
-        // 🔎 Determinar tipo de alerta según el stock actual
-        if ($inventory->stock <= 0) {
-            $type = 'critical';
-            $message = 'El stock del producto "' . $inventory->product->name . '" está en 0. ¡Reabastecimiento urgente!';
-        } elseif ($inventory->stock < $inventory->min_stock) {
-            $type = 'low_stock';
-            $message = 'El stock del producto "' . $inventory->product->name . '" está por debajo del mínimo permitido.';
+        if (!$product) {
+            Log::warning("Inventario {$inventory->id} sin producto asociado");
+            return;
         }
 
-        // ✅ Si el stock está normal → resolver todas las alertas activas
-        if (!$type) {
-            Alert::where('inventory_id', $inventory->id)
-                ->where('status', 'active')
-                ->update(['status' => 'resolved']);
-            Log::info("🟢 Alerta resuelta automáticamente para inventario ID {$inventory->id}");
-            return null;
+        $currentStock = $inventory->stock;
+        // ✅ Asegurar que min_stock nunca sea null
+        $minStock = (int) ($inventory->min_stock ?? 0);
+
+        $alertType = $this->determineAlertType($currentStock, $minStock);
+
+        DB::transaction(function () use ($product, $inventory, $currentStock, $alertType) {
+            $this->processAlert($product, $inventory, $currentStock, $alertType);
+        });
+    }
+
+    /**
+     * Determina el tipo de alerta según el stock actual
+     */
+    private function determineAlertType(int $currentStock, int $minStock): ?string
+    {
+        // ✅ Si no hay stock
+        if ($currentStock == 0) {
+            return Alert::TYPE_OUT_OF_STOCK;
         }
 
-        // 🔍 Verificar si ya existe una alerta activa del mismo tipo
-        $existingAlert = Alert::where('inventory_id', $inventory->id)
-            ->where('alert_type', $type)
-            ->where('status', 'active')
+        // ✅ Si hay stock pero es menor al mínimo
+        if ($currentStock > 0 && $currentStock < $minStock) {
+            return Alert::TYPE_LOW_STOCK;
+        }
+
+        // ✅ Stock normal
+        return null;
+    }
+
+    /**
+     * Procesa la creación, actualización o resolución de alertas
+     */
+    private function processAlert($product, Inventory $inventory, int $currentStock, ?string $alertType): void
+    {
+        $activeAlert = Alert::where('product_id', $product->id)
+            ->where('status', Alert::STATUS_ACTIVE)
             ->first();
 
-        if ($existingAlert) {
-            return $existingAlert;
+        if ($alertType) {
+            // Crear o actualizar alerta
+            $message = $this->generateMessage($product, $currentStock, $alertType);
+
+            Alert::updateOrCreate(
+                [
+                    'product_id' => $product->id,
+                    'status' => Alert::STATUS_ACTIVE
+                ],
+                [
+                    'inventory_id' => $inventory->id,
+                    'alert_type' => $alertType,
+                    'message' => $message,
+                    'date' => now(),
+                    'resolved_at' => null,
+                ]
+            );
+        } elseif ($activeAlert) {
+            // Resolver alerta si el stock se normalizó
+            $this->autoResolveAlert($activeAlert, $product, $currentStock);
+        }
+    }
+
+    /**
+     * Resuelve automáticamente una alerta cuando el stock se normaliza
+     */
+    private function autoResolveAlert(Alert $alert, $product, int $currentStock): void
+    {
+        $alert->update([
+            'status' => Alert::STATUS_RESOLVED,
+            'message' => "El stock del producto '{$product->name}' se ha normalizado ({$currentStock} unidades).",
+            'resolved_at' => now(),
+        ]);
+    }
+
+    /**
+     * Genera el mensaje de alerta apropiado
+     */
+    private function generateMessage($product, int $stock, string $alertType): string
+    {
+        if ($alertType === Alert::TYPE_OUT_OF_STOCK) {
+            return "El producto '{$product->name}' está sin stock (0 unidades).";
         }
 
-        // 🔒 Resolver otras alertas activas antes de crear una nueva
-        Alert::where('inventory_id', $inventory->id)
-            ->where('status', 'active')
-            ->update(['status' => 'resolved']);
-
-        // 🆕 Crear nueva alerta
-        $alert = Alert::create([
-            'inventory_id' => $inventory->id,
-            'product_id'   => $inventory->product_id,
-            'alert_type'   => $type,
-            'status'       => 'active',
-            'message'      => $message,
-            'date'         => now(),
-        ]);
-
-        Log::warning("🚨 Nueva alerta {$type} creada para inventario ID {$inventory->id}");
-
-        $this->sendNotification($alert);
-
-        return $alert;
+        return "El producto '{$product->name}' tiene stock bajo ({$stock} unidades disponibles).";
     }
 
     /**
-     * 📋 Listar todas las alertas
+     * Resuelve manualmente una alerta
      */
-    public function getAllAlerts()
-    {
-        return Alert::with(['inventory.product'])
-            ->orderByDesc('created_at')
-            ->get();
-    }
-
-    /**
-     * ⚠️ Listar solo las alertas activas
-     */
-    public function getActiveAlerts()
-    {
-        return Alert::with(['inventory.product'])
-            ->where('status', 'active')
-            ->orderByDesc('created_at')
-            ->get();
-    }
-
-    /**
-     * ✅ Resolver alerta manualmente
-     */
-    public function resolveAlert($id)
+    public function resolveAlert(int $id): Alert
     {
         $alert = Alert::findOrFail($id);
-        $alert->update(['status' => 'resolved']);
-        Log::info("✅ Alerta ID {$id} resuelta manualmente.");
 
-        return $alert;
-    }
+        if ($alert->status === Alert::STATUS_RESOLVED) {
+            return $alert;
+        }
 
-    /**
-     * 🆕 Crear alerta manual y enviar notificación
-     */
-    public function createManualAlert(Request $request)
-    {
-        $alert = Alert::create([
-            'date'         => now(),
-            'alert_type'   => $request->alert_type,
-            'product_id'   => $request->product_id,
-            'inventory_id' => $request->inventory_id,
-            'status'       => 'active',
-            'message'      => $request->message ?? 'Alerta generada manualmente.',
+        $alert->update([
+            'status' => Alert::STATUS_RESOLVED,
+            'message' => $alert->message . ' (Resuelta manualmente)',
+            'resolved_at' => now(),
         ]);
 
-        $this->sendNotification($alert);
-
-        return $alert;
+        return $alert->fresh(['product', 'inventory']);
     }
 
     /**
-     * ✉️ Enviar notificación de alerta
+     * Obtiene alertas con filtros opcionales
      */
-    private function sendNotification(Alert $alert)
+    public function getAlerts(array $filters = []): Collection
     {
-        try {
-            $emailDestino = 'ivanslee77@gmail.com'; // 📩 Cambia aquí tu correo
+        $query = Alert::with(['product', 'inventory']);
 
-            Notification::route('mail', $emailDestino)
-                ->notify(new StockAlertNotification($alert));
-
-            Log::info("📧 Notificación enviada correctamente a {$emailDestino} para producto ID {$alert->product_id}");
-        } catch (\Exception $e) {
-            Log::error('❌ Error al enviar notificación de alerta: ' . $e->getMessage());
+        if (!empty($filters['alert_type'])) {
+            $query->where('alert_type', $filters['alert_type']);
         }
+
+        if (!empty($filters['status'])) {
+            $query->where('status', $filters['status']);
+        }
+
+        if (!empty($filters['product_id'])) {
+            $query->where('product_id', $filters['product_id']);
+        }
+
+        if (!empty($filters['date_from'])) {
+            $query->where('date', '>=', $filters['date_from']);
+        }
+
+        if (!empty($filters['date_to'])) {
+            $query->where('date', '<=', $filters['date_to']);
+        }
+
+        return $query->orderBy('date', 'desc')
+                    ->orderBy('created_at', 'desc')
+                    ->get();
+    }
+
+    /**
+     * Verifica el stock de todo el inventario
+     */
+    public function checkAllInventory(): void
+    {
+        $inventories = Inventory::with('product')->get();
+
+        foreach ($inventories as $inventory) {
+            try {
+                $this->checkStock($inventory);
+            } catch (\Exception $e) {
+                Log::error("Error al verificar inventario {$inventory->id}: {$e->getMessage()}");
+            }
+        }
+    }
+
+    /**
+     * Obtiene estadísticas de alertas
+     */
+    public function getStats(): array
+    {
+        return [
+            'total' => Alert::count(),
+            'active' => Alert::active()->count(),
+            'resolved' => Alert::resolved()->count(),
+            'low_stock' => Alert::lowStock()->count(),
+            'out_of_stock' => Alert::outOfStock()->count(),
+            'today' => Alert::whereDate('date', today())->count(),
+        ];
     }
 }
