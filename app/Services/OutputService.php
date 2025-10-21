@@ -5,169 +5,189 @@ namespace App\Services;
 use App\Models\Output;
 use App\Models\Product;
 use App\Models\Inventory;
-use App\Models\User;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class OutputService
 {
     /**
-     * 📄 Listar todas las salidas
+     * 📋 Listar todas las salidas
      */
     public function listAll()
     {
-        $outputs = Output::with(['product.category', 'user'])->get();
-
-        return $outputs->map(function ($output) {
-            return [
-                'id' => $output->id,
-                'producto' => $output->product->name ?? 'Producto desconocido',
-                'categoria' => $output->product->category->name ?? 'Sin categoría',
-                'usuario' => $output->user->name ?? 'Desconocido',
-                'fecha' => $output->created_at ? $output->created_at->format('d/m/Y') : null,
-                'lote' => $output->lot ?? '',
-                'cantidad' => $output->quantity . ' ' . ($output->unit ?? ''),
-                'inventory_id' => $output->inventory_id,
-            ];
-        });
+        return Output::with(['product.category', 'user', 'inventory'])
+            ->latest()
+            ->get()
+            ->map(fn($o) => [
+                'id'          => $o->id,
+                'producto'    => $o->product->name ?? 'Producto desconocido',
+                'categoria'   => $o->product->category->name ?? 'Sin categoría',
+                'usuario'     => $o->user->name ?? 'Desconocido',
+                'cantidad'    => "{$o->quantity} " . ($o->unit ?? ''),
+                'lote'        => $o->lot ?? '',
+                'inventario'  => $o->inventory->id ?? null,
+                'fecha'       => $o->created_at?->format('Y-m-d H:i:s'),
+            ]);
     }
 
     /**
-     * ➕ Crear nueva salida
+     * ➕ Crear nueva salida (FIFO)
      */
-    public function create(array $validated)
+    public function create(array $validated): array
     {
-        return DB::transaction(function () use ($validated) {
+        try {
+            return DB::transaction(function () use ($validated) {
+                // Buscar inventario FIFO
+                $query = Inventory::where('product_id', $validated['product_id'])
+                    ->where('stock', '>', 0);
 
-            // 🔹 Buscar inventario asociado o deducirlo por producto
-            $inventory = null;
+                if (!empty($validated['lot'])) {
+                    $query->where('lot', $validated['lot']);
+                }
 
-            if (isset($validated['inventory_id'])) {
-                $inventory = Inventory::find($validated['inventory_id']);
-            } else {
-                $inventory = Inventory::where('product_id', $validated['product_id'])->first();
-            }
+                $inventory = $query->orderBy('created_at', 'asc')->first();
 
-            if (!$inventory) {
+                if (!$inventory) {
+                    return [
+                        'error' => true,
+                        'message' => 'No se encontró inventario disponible para este producto' .
+                            (!empty($validated['lot']) ? ' con el lote especificado.' : '.'),
+                    ];
+                }
+
+                if ($validated['quantity'] > $inventory->stock) {
+                    return [
+                        'error' => true,
+                        'message' => "Stock insuficiente. Disponible: {$inventory->stock}, Solicitado: {$validated['quantity']}",
+                    ];
+                }
+
+                // Crear salida
+                $output = Output::create([
+                    'product_id'   => $validated['product_id'],
+                    'inventory_id' => $inventory->id,
+                    'quantity'     => $validated['quantity'],
+                    'unit'         => $validated['unit'] ?? null,
+                    'lot'          => $inventory->lot,
+                    'user_id'      => $validated['user_id'],
+                ]);
+
+                // Actualizar stock
+                $inventory->decrement('stock', $validated['quantity']);
+
                 return [
-                    'error' => true,
-                    'message' => 'No se encontró un inventario válido para este producto.'
+                    'error'   => false,
+                    'data'    => $output->load(['product', 'user', 'inventory']),
+                    'message' => 'Salida registrada correctamente.',
                 ];
-            }
-
-            // 🔹 Verificar stock suficiente
-            if ($validated['quantity'] > $inventory->stock) {
-                return [
-                    'error' => true,
-                    'message' => 'No hay suficiente stock para esta salida.'
-                ];
-            }
-
-            // 🔹 Crear la salida
-            $output = Output::create([
-                ...$validated,
-                'inventory_id' => $inventory->id,
+            });
+        } catch (\Exception $e) {
+            Log::error('❌ Error al crear salida', [
+                'error' => $e->getMessage(),
+                'data' => $validated,
             ]);
 
-            // 🔹 Actualizar stock
-            $inventory->stock -= $validated['quantity'];
-            $inventory->save();
-
-            return [
-                'error' => false,
-                'data' => $output->load(['product', 'user'])
-            ];
-        });
+            return ['error' => true, 'message' => 'Error al registrar la salida: ' . $e->getMessage()];
+        }
     }
 
     /**
-     * 🔍 Mostrar una salida
+     * 🔍 Buscar salida por ID
      */
-    public function find($id)
+    public function find(int $id): array
     {
-        $output = Output::with(['product.category', 'user'])->findOrFail($id);
+        $output = Output::with(['product.category', 'user', 'inventory'])->find($id);
 
-        return [
-            'id' => $output->id,
-            'producto' => $output->product->name ?? 'Producto desconocido',
-            'categoria' => $output->product->category->name ?? 'Sin categoría',
-            'usuario' => $output->user->name ?? 'Desconocido',
-            'fecha' => $output->created_at ? $output->created_at->format('d/m/Y') : null,
-            'lote' => $output->lot ?? '',
-            'cantidad' => $output->quantity . ' ' . ($output->unit ?? ''),
-        ];
+        return $output
+            ? ['error' => false, 'data' => $output]
+            : ['error' => true, 'message' => 'No se encontró la salida especificada.'];
     }
 
     /**
-     * ✏️ Actualizar una salida
+     * ✏️ Actualizar salida existente
      */
-    public function update($id, array $validated)
+    public function update(int $id, array $validated): array
     {
-        $output = Output::findOrFail($id);
+        return DB::transaction(function () use ($id, $validated) {
+            $output = Output::find($id);
 
-        return DB::transaction(function () use ($output, $validated) {
-            $inventory = Inventory::findOrFail($output->inventory_id);
+            if (!$output) {
+                return ['error' => true, 'message' => 'No se encontró la salida especificada.'];
+            }
 
+            $inventory = $output->inventory;
+            if (!$inventory) {
+                return ['error' => true, 'message' => 'Inventario asociado no encontrado.'];
+            }
+
+            // Reajuste de stock si cambia la cantidad
             if (isset($validated['quantity']) && $validated['quantity'] != $output->quantity) {
                 $diff = $validated['quantity'] - $output->quantity;
 
                 if ($diff > 0 && $diff > $inventory->stock) {
-                    return [
-                        'error' => true,
-                        'message' => 'No hay suficiente stock para aumentar la cantidad.'
-                    ];
+                    return ['error' => true, 'message' => 'No hay suficiente stock para aumentar la cantidad.'];
                 }
 
                 $inventory->stock -= $diff;
                 $inventory->save();
             }
 
+            $validated['user_id'] = Auth::id();
             $output->update($validated);
 
             return [
-                'error' => false,
-                'data' => $output->load(['product', 'user'])
+                'error'   => false,
+                'data'    => $output->load(['product', 'user', 'inventory']),
+                'message' => 'Salida actualizada correctamente.',
             ];
+        });
+    }
+
+    /**
+     * ❌ Eliminar salida y restaurar stock
+     */
+    public function delete(int $id): array
+    {
+        return DB::transaction(function () use ($id) {
+            $output = Output::find($id);
+
+            if (!$output) {
+                return ['error' => true, 'message' => 'No se encontró la salida especificada.'];
+            }
+
+            if ($output->inventory) {
+                $output->inventory->increment('stock', $output->quantity);
+            }
+
+            $output->delete();
+
+            return ['error' => false, 'message' => 'Salida eliminada y stock restaurado correctamente.'];
         });
     }
 
     /**
      * 📊 Resumen de salidas
      */
-    public function summary()
+    public function summary(): array
     {
         return [
-            'total_outputs' => Output::count(),
-            'total_quantity' => Output::sum('quantity'),
-            'last_output_date' => optional(Output::latest()->value('created_at'))->format('Y-m-d H:i:s'),
+            'total_salidas'  => Output::count(),
+            'total_cantidad' => Output::sum('quantity'),
+            'ultima_salida'  => optional(Output::latest('created_at')->first())->created_at?->format('Y-m-d H:i:s'),
         ];
     }
 
     /**
-     * 🗑️ Eliminar una salida
+     * ⚙️ Datos para formularios
      */
-    public function delete($id)
-    {
-        $output = Output::findOrFail($id);
-
-        return DB::transaction(function () use ($output) {
-            $inventory = Inventory::findOrFail($output->inventory_id);
-            $inventory->stock += $output->quantity;
-            $inventory->save();
-
-            $output->delete();
-
-            return true;
-        });
-    }
-
-    /**
-     * 📦 Datos para formularios
-     */
-    public function formData()
+    public function formData(): array
     {
         return [
-            'productos' => Product::select('id', 'name')->get(),
-            'usuarios' => User::select('id', 'name')->get(),
+            'productos'   => Product::select('id', 'name')->get(),
+            'inventarios' => Inventory::select('id', 'product_id', 'stock', 'lot')
+                ->where('stock', '>', 0)
+                ->get(),
         ];
     }
 }

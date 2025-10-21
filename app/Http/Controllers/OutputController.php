@@ -3,11 +3,12 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use App\Services\OutputService;
 
 class OutputController extends Controller
 {
-    protected $service;
+    protected OutputService $service;
 
     public function __construct(OutputService $service)
     {
@@ -15,12 +16,17 @@ class OutputController extends Controller
     }
 
     /**
-     * 📄 Listar todas las salidas
+     * 📦 Listar todas las salidas
      */
     public function index()
     {
         $data = $this->service->listAll();
-        return response()->json(['message' => 'Listado de salidas', 'data' => $data]);
+
+        return response()->json([
+            'status'  => 'success',
+            'message' => 'Listado de salidas',
+            'data'    => $data,
+        ]);
     }
 
     /**
@@ -29,84 +35,119 @@ class OutputController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'product_id' => 'required|exists:products,id',
-            'quantity' => 'required|integer|min:1',
-            'unit' => 'nullable|string|max:20',
-            'lot' => 'nullable|string|max:50',
-            'user_id' => 'required|exists:users,id',
-            // 🔹 inventory_id ahora es opcional
+            'product_id'   => 'required|exists:products,id',
             'inventory_id' => 'nullable|exists:inventories,id',
+            'quantity'     => 'required|numeric|min:1',
+            'unit'         => 'nullable|string|max:20',
+            'lot'          => 'nullable|string|max:50',
         ]);
+
+        // ✅ Añadir el usuario autenticado
+        $validated['user_id'] = Auth::id();
 
         $result = $this->service->create($validated);
 
-        if ($result['error']) {
-            return response()->json(['message' => $result['message']], 400);
-        }
-
+        // Si hay error lógico, devuelve 422 (Unprocessable Entity)
         return response()->json([
-            'message' => 'Salida creada exitosamente',
-            'data' => $result['data']
-        ], 201);
+            'status'  => $result['error'] ? 'error' : 'success',
+            'message' => $result['message'],
+            'data'    => $result['data'] ?? null,
+        ], $result['error'] ? 422 : 201);
     }
 
     /**
-     * 🔍 Mostrar detalles de una salida
+     * 📄 Mostrar detalles
      */
     public function show($id)
     {
-        $data = $this->service->find($id);
-        return response()->json(['message' => 'Detalles de la salida', 'data' => $data]);
+        if (!is_numeric($id)) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'El identificador de salida no es válido.',
+            ], 400);
+        }
+
+        $data = $this->service->find((int) $id);
+
+        return response()->json([
+            'status'  => $data['error'] ? 'error' : 'success',
+            'message' => $data['message'] ?? 'Detalles de la salida',
+            'data'    => $data['data'] ?? null,
+        ], $data['error'] ? 404 : 200);
     }
 
     /**
-     * ✏️ Actualizar una salida existente
+     * ✏️ Actualizar salida
      */
     public function update(Request $request, $id)
     {
-        $validated = $request->validate([
-            'product_id' => 'sometimes|exists:products,id',
-            'quantity' => 'sometimes|integer|min:1',
-            'unit' => 'sometimes|string|max:20',
-            'lot' => 'sometimes|string|max:50',
-            'user_id' => 'sometimes|exists:users,id',
-            'inventory_id' => 'sometimes|exists:inventories,id',
-        ]);
-
-        $result = $this->service->update($id, $validated);
-
-        if ($result['error']) {
-            return response()->json(['message' => $result['message']], 400);
+        if (!is_numeric($id)) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'El identificador de salida no es válido.',
+            ], 400);
         }
 
-        return response()->json([
-            'message' => 'Salida actualizada exitosamente',
-            'data' => $result['data']
+        $validated = $request->validate([
+            'product_id'   => 'sometimes|exists:products,id',
+            'inventory_id' => 'sometimes|exists:inventories,id',
+            'quantity'     => 'sometimes|numeric|min:1',
+            'unit'         => 'sometimes|string|max:20',
+            'lot'          => 'sometimes|string|max:50',
         ]);
+
+        $validated['user_id'] = Auth::id();
+
+        $result = $this->service->update((int) $id, $validated);
+
+        return response()->json([
+            'status'  => $result['error'] ? 'error' : 'success',
+            'message' => $result['message'],
+            'data'    => $result['data'] ?? null,
+        ], $result['error'] ? 422 : 200);
     }
 
     /**
-     * 📊 Obtener resumen de salidas
-     */
-    public function summary()
-    {
-        return response()->json($this->service->summary());
-    }
-
-    /**
-     * 🗑️ Eliminar una salida
+     * 🗑️ Eliminar salida
      */
     public function destroy($id)
     {
-        $this->service->delete($id);
-        return response()->json(['message' => 'Salida eliminada exitosamente']);
+        if (!is_numeric($id)) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'El identificador de salida no es válido.',
+            ], 400);
+        }
+
+        $result = $this->service->delete((int) $id);
+
+        return response()->json([
+            'status'  => $result['error'] ? 'error' : 'success',
+            'message' => $result['message'],
+        ], $result['error'] ? 422 : 200);
     }
 
     /**
-     * 📦 Datos para formularios
+     * 📊 Resumen
+     */
+    public function summary()
+    {
+        return response()->json([
+            'status'  => 'success',
+            'message' => 'Resumen de salidas',
+            'data'    => $this->service->summary(),
+        ]);
+    }
+
+    /**
+     * 📋 Datos para formulario
      */
     public function formData()
     {
-        return response()->json($this->service->formData());
+        return response()->json([
+            'status'  => 'success',
+            'message' => 'Datos de formulario',
+            'data'    => $this->service->formData(),
+        ]);
     }
 }

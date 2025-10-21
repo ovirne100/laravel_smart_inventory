@@ -3,147 +3,149 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
-use App\Models\Product;
-use App\Services\ProductService;
-use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Auth;
+use App\Services\OutputService;
 
-class ProductController extends Controller
+class OutputController extends Controller
 {
-    protected $productService;
+    protected OutputService $service;
 
-    public function __construct(ProductService $productService)
+    public function __construct(OutputService $service)
     {
-        $this->productService = $productService;
+        $this->service = $service;
     }
 
     /**
-     * Mostrar listado de productos con filtros opcionales
+     * 📄 Listar todas las salidas
      */
-    public function index(Request $request)
+    public function index()
     {
-        $filters = $request->only(['search', 'category_id', 'status', 'min_price', 'max_price']);
-        $productos = $this->productService->getAll($filters);
+        $data = $this->service->listAll();
 
-        return response()->json($productos);
+        return response()->json([
+            'status'  => 'success',
+            'message' => 'Listado de salidas',
+            'data'    => $data,
+        ]);
     }
 
     /**
-     * Mostrar un producto específico
+     * ➕ Crear nueva salida
      */
-    public function show(Product $product)
-    {
-        $product->load(['categoria', 'inventory']);
-        return response()->json($product);
-    }
-
-    /**
-     * Crear un nuevo producto junto con su inventario inicial
-     */
-
     public function store(Request $request)
     {
-        // Validar los datos recibidos (permitir opcionales como en el frontend)
         $validated = $request->validate([
-            'name' => 'required|string|max:255',
-            'reference' => 'nullable|string|max:255',
-            'unit_measurement' => 'nullable|string|max:100',
-            'category_id' => 'nullable|integer|exists:categories,id',
-            'price' => 'nullable|numeric',
-            'quantity' => 'nullable|integer',
-            'min_stock' => 'nullable|integer',
-            'location' => 'nullable|string|max:255',
-            'expiration_date' => 'nullable|date',
-            'image' => 'nullable|file|image|max:2048',
+            'product_id'   => 'required|exists:products,id',
+            'inventory_id' => 'nullable|exists:inventories,id',
+            'quantity'     => 'required|numeric|min:1',
+            'unit'         => 'nullable|string|max:20',
+            'lot'          => 'nullable|string|max:50',
         ]);
 
-        // Subida de imagen (si existe)
-        if ($request->hasFile('image')) {
-            $path = $request->file('image')->store('uploads', 'public');
-            $validated['image'] = $path;
-        }
+        $validated['user_id'] = Auth::id();
 
-        // Crear producto
-        $product = Product::create($validated);
-
-        // Crear inventario automáticamente
-        \App\Models\Inventory::create([
-            'product_id' => $product->id,
-            'quantity' => $validated['quantity'] ?? 0,
-            'min_stock' => $validated['min_stock'] ?? 0,
-            'location' => $validated['location'] ?? 'Sin ubicación',
-        ]);
-
-        Log::info('✅ Producto creado correctamente', ['id' => $product->id]);
+        $result = $this->service->create($validated);
 
         return response()->json([
-            'message' => 'Producto creado exitosamente',
-            'product' => $product,
-        ], 201);
-
-    } catch (\Exception $e) {
-        Log::error('❌ Error al crear producto: ' . $e->getMessage());
-        return response()->json(['error' => $e->getMessage()], 500);
-    }
-}
-
-
-
-
-
-    /**
-     * Actualizar producto existente
-     */
-    public function update(Request $request, Product $product)
-    {
-        $validated = $request->validate([
-            'name' => 'sometimes|string|max:255',
-            'reference' => 'sometimes|string|max:100|unique:products,reference,' . $product->id,
-            'unit_measurement' => 'sometimes|string|max:50',
-            'batch' => 'sometimes|string|max:100',
-            'category_id' => 'sometimes|exists:categories,id',
-            'expiration_date' => 'nullable|date',
-            'image' => 'nullable|file|image|max:2048',
-        ]);
-
-        // 📸 Actualizar imagen si se envía una nueva
-        if ($request->hasFile('image')) {
-            if ($product->image && file_exists(public_path($product->image))) {
-                unlink(public_path($product->image));
-            }
-
-            $path = $request->file('image')->store('uploads/products', 'public');
-            $validated['image'] = 'storage/' . $path;
-        }
-
-        $product = $this->productService->update($product, $validated);
-
-        return response()->json([
-            'message' => 'Producto actualizado correctamente.',
-            'data' => $product,
-        ]);
+            'status'  => $result['error'] ? 'error' : 'success',
+            'message' => $result['message'],
+            'data'    => $result['data'] ?? null,
+        ], $result['error'] ? 400 : 201);
     }
 
     /**
-     * Eliminar producto
+     * 🔍 Mostrar detalles de una salida
      */
-    public function destroy(Product $product)
+    public function show($id)
     {
-        if ($product->image && file_exists(public_path($product->image))) {
-            unlink(public_path($product->image));
+        if (!is_numeric($id)) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'El identificador de salida no es válido.',
+            ], 400);
         }
 
-        $this->productService->delete($product);
+        $data = $this->service->find((int) $id);
 
         return response()->json([
-            'message' => 'Producto eliminado correctamente.'
+            'status'  => $data['error'] ? 'error' : 'success',
+            'message' => $data['message'] ?? 'Detalles de la salida',
+            'data'    => $data['data'] ?? null,
+        ], $data['error'] ? 404 : 200);
+    }
+
+    /**
+     * ✏️ Actualizar salida
+     */
+    public function update(Request $request, $id)
+    {
+        if (!is_numeric($id)) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'El identificador de salida no es válido.',
+            ], 400);
+        }
+
+        $validated = $request->validate([
+            'product_id'   => 'sometimes|exists:products,id',
+            'inventory_id' => 'sometimes|exists:inventories,id',
+            'quantity'     => 'sometimes|numeric|min:1',
+            'unit'         => 'sometimes|string|max:20',
+            'lot'          => 'sometimes|string|max:50',
+        ]);
+
+        $validated['user_id'] = Auth::id();
+
+        $result = $this->service->update((int) $id, $validated);
+
+        return response()->json([
+            'status'  => $result['error'] ? 'error' : 'success',
+            'message' => $result['message'],
+            'data'    => $result['data'] ?? null,
+        ], $result['error'] ? 400 : 200);
+    }
+
+    /**
+     * ❌ Eliminar salida
+     */
+    public function destroy($id)
+    {
+        if (!is_numeric($id)) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'El identificador de salida no es válido.',
+            ], 400);
+        }
+
+        $result = $this->service->delete((int) $id);
+
+        return response()->json([
+            'status'  => $result['error'] ? 'error' : 'success',
+            'message' => $result['message'],
+        ], $result['error'] ? 400 : 200);
+    }
+
+    /**
+     * 📊 Resumen de salidas
+     */
+    public function summary()
+    {
+        return response()->json([
+            'status'  => 'success',
+            'message' => 'Resumen de salidas',
+            'data'    => $this->service->summary(),
         ]);
     }
 
-    public function getSuppliers($productId)
-{
-    $product = \App\Models\Product::with('suppliers')->findOrFail($productId);
-    return response()->json($product->suppliers);
-}
-
+    /**
+     * ⚙️ Datos para formularios
+     */
+    public function formData()
+    {
+        return response()->json([
+            'status'  => 'success',
+            'message' => 'Datos de formulario',
+            'data'    => $this->service->formData(),
+        ]);
+    }
 }

@@ -15,29 +15,23 @@ use App\Http\Controllers\WarehouseController;
 use App\Http\Controllers\AlertController;
 use App\Http\Controllers\EntryController;
 use App\Http\Controllers\EntryNoteController;
-use App\Http\Controllers\ProductExitController;
+use App\Http\Controllers\OutputController;
 use App\Http\Controllers\ExitDetailController;
 use App\Http\Controllers\InventoryDetailController;
 use App\Http\Controllers\SupplierController;
 use App\Http\Controllers\ProductSupplierController;
-<<<<<<< HEAD
 use App\Http\Controllers\DashboardController;
-use App\Http\Controllers\OutputController;
 
 /*
 |--------------------------------------------------------------------------
-| API Routes
+| API Routes - Sistema de Inventario
 |--------------------------------------------------------------------------
-| Archivo fusionado y optimizado de rutas del backend.
-| Estructurado en secciones: públicas, protegidas y admin.
+| Rutas organizadas por módulos con prioridad correcta
 |--------------------------------------------------------------------------
 */
 
-// ✅ Ruta de prueba básica
+// ✅ Ruta de prueba
 Route::get('/ping', fn() => response()->json(['message' => 'API funcionando correctamente 🚀']));
-=======
-use App\Models\ExitDetail;
->>>>>>> 0ed22cfdc47b44ea2a0de0d18550105196679823
 
 // ==========================
 // 🟢 RUTAS PÚBLICAS
@@ -47,71 +41,98 @@ Route::post('login', [AuthController::class, 'login']);
 Route::get('roles-public', [RoleController::class, 'getRolesForRegister']);
 Route::post('roles-public', [RoleController::class, 'store']);
 
-
-    // ======================
-    // 📊 Dashboard
-    // ======================
-   // Route::get('dashboard/summary', [DashboardController::class, 'summary']);
-
-<<<<<<< HEAD
 // ==========================
 // 🟡 RUTAS PROTEGIDAS (Auth)
 // ==========================
-=======
-//entradas de productos
-Route::get('entries/form-data', [EntryController::class, 'formData']);
-Route::apiResource('entries', EntryController::class);
-//salidas de productos
-Route::get('outputs/form-data', [ExitDetailController::class, 'formData']);
-Route::apiResource('outputs', ExitDetailController::class);
-
-
-// Protected routes
->>>>>>> 0ed22cfdc47b44ea2a0de0d18550105196679823
 Route::middleware('auth:sanctum')->group(function () {
 
+    // ======================
     // 🔐 Autenticación
+    // ======================
     Route::post('logout', [AuthController::class, 'logout']);
     Route::get('profile', [UserController::class, 'profile']);
     Route::get('user', [AuthController::class, 'me']);
 
-// Inicialización o sincronización de categorías
-Route::post('categories/init', [CategoryController::class, 'init']);
-Route::post('categories/sync', [CategoryController::class, 'sync']);
-Route::apiResource('categories', CategoryController::class)->only(['index', 'show']);
-
+    // ======================
+    // 📊 Dashboard
+    // ======================
+    Route::get('dashboard/summary', [DashboardController::class, 'summary']);
 
     // ======================
-    // 📦 Productos e Inventarios
+    // 🚨 ALERTAS (PRIORIDAD)
     // ======================
+    Route::prefix('alerts')->group(function () {
+        // 📊 Obtener estadísticas de alertas
+        Route::get('stats', [AlertController::class, 'stats']);
+
+        // 🔄 Verificar todo el inventario y actualizar alertas
+        Route::post('check-all', [AlertController::class, 'checkAll']);
+
+        // 📋 Listar alertas con filtros opcionales (?alert_type=low_stock&status=active)
+        Route::get('/', [AlertController::class, 'index']);
+
+        // ✅ Marcar alerta como resuelta
+        Route::put('{id}/resolve', [AlertController::class, 'resolve']);
+    });
+
+    // ======================
+    // 🧾 Categorías
+    // ======================
+    Route::prefix('categories')->group(function () {
+        Route::post('init', [CategoryController::class, 'init']);
+        Route::post('sync', [CategoryController::class, 'sync']);
+        Route::get('/', [CategoryController::class, 'index']);
+        Route::get('{id}', [CategoryController::class, 'show']);
+    });
+
+    // ======================
+    // 📦 Productos
+    // ======================
+    Route::prefix('products')->group(function () {
+        Route::get('{productId}/suppliers', [ProductController::class, 'getSuppliers']);
+        Route::post('{productId}/attach-suppliers', [ProductSupplierController::class, 'attachSuppliersToProduct']);
+    });
     Route::apiResource('products', ProductController::class);
     Route::apiResource('product-details', ProductDetailController::class);
+
+    // ======================
+    // 📦 Inventarios (ACTUALIZADO)
+    // ======================
+    Route::prefix('inventories')->group(function () {
+        // Resumen general (debe ir antes de {id})
+        Route::get('summary', [InventoryController::class, 'summary']);
+
+        // Ajustar stock
+        Route::post('{id}/adjust', [InventoryController::class, 'adjustStock']);
+    });
     Route::apiResource('inventories', InventoryController::class);
-    Route::post('inventories/{id}/adjust', [InventoryController::class, 'adjustStock']);
     Route::apiResource('inventory-details', InventoryDetailController::class);
 
     // ======================
-    // 🏭 Almacenes y ubicaciones
+    // 🏭 Almacenes y Ubicaciones
     // ======================
     Route::apiResource('warehouses', WarehouseController::class);
     Route::apiResource('locations', LocationController::class);
 
-
     // ======================
-    // 🧾 Entradas / Salidas
+    // 📥 Entradas
     // ======================
-    // Entradas
-    Route::get('entries/summary', [EntryController::class, 'summary']);
-    Route::get('entries/form-data', [EntryController::class, 'formData']);
+    Route::prefix('entries')->group(function () {
+        Route::get('summary', [EntryController::class, 'summary']);
+        Route::get('form-data', [EntryController::class, 'formData']);
+    });
     Route::apiResource('entries', EntryController::class);
     Route::apiResource('entry-notes', EntryNoteController::class);
 
-    // Salidas (renombrado a ProductExitController)
-   Route::get('/outputs/summary', [OutputController::class, 'summary']);
-
-    Route::get('/outputs/form-data', [OutputController::class, 'formData']);
-    Route::apiResource('/outputs', OutputController::class);
-    Route::apiResource('/exit-details', ExitDetailController::class);
+    // ======================
+    // 📤 Salidas
+    // ======================
+    Route::prefix('outputs')->group(function () {
+        Route::get('summary', [OutputController::class, 'summary']);
+        Route::get('form-data', [OutputController::class, 'formData']);
+    });
+    Route::apiResource('outputs', OutputController::class);
+    Route::apiResource('exit-details', ExitDetailController::class);
 
     // ======================
     // 🛍️ Órdenes y Dependencias
@@ -120,39 +141,20 @@ Route::apiResource('categories', CategoryController::class)->only(['index', 'sho
     Route::apiResource('dep-buys', DepBuyController::class);
 
     // ======================
-    // 🧑‍🤝‍🧑 Proveedores y relaciones
+    // 🧑‍🤝‍🧑 Proveedores
     // ======================
+    Route::prefix('suppliers')->group(function () {
+        Route::get('{supplier}/products', [SupplierController::class, 'getProducts']);
+        Route::post('{supplier}/products', [SupplierController::class, 'syncProducts']);
+        Route::post('{supplier}/products/attach', [SupplierController::class, 'attachProducts']);
+        Route::delete('{supplier}/products/{product}', [SupplierController::class, 'detachProduct']);
+        Route::post('{supplierId}/attach-products', [ProductSupplierController::class, 'attachProductsToSupplier']);
+    });
     Route::apiResource('suppliers', SupplierController::class);
     Route::apiResource('product-suppliers', ProductSupplierController::class);
 
-    // Relaciones producto <-> proveedor
-    Route::get('suppliers/{supplier}/products', [SupplierController::class, 'products']);
-    Route::post('suppliers/{supplier}/products', [SupplierController::class, 'syncProducts']);
-    Route::post('suppliers/{supplier}/products/attach', [SupplierController::class, 'attachProducts']);
-    Route::delete('suppliers/{supplier}/products/{product}', [SupplierController::class, 'detachProduct']);
-    // 🔹 Asociar múltiples productos a un proveedor
-Route::post('suppliers/{supplierId}/attach-products', [ProductSupplierController::class, 'attachProductsToSupplier']);
-
-// 🔹 Asociar múltiples proveedores a un producto
-Route::post('products/{productId}/attach-suppliers', [ProductSupplierController::class, 'attachSuppliersToProduct']);
-
-// 🔹 Obtener todos los productos de un proveedor (con detalles del pivot)
-Route::get('suppliers/{supplierId}/products', [SupplierController::class, 'getProducts']);
-
-// 🔹 Obtener todos los proveedores de un producto (con detalles del pivot)
-Route::get('products/{productId}/suppliers', [ProductController::class, 'getSuppliers']);
-
     // ======================
-    // 🚨 Alertas
-    // ======================
-    Route::apiResource('alerts', AlertController::class);
-    Route::patch('alerts/{id}/status', [AlertController::class, 'resolve']);
-    Route::post('alerts/check/{inventory}', [AlertController::class, 'checkStockRoute']);
-    Route::get('alerts/test/{inventory}', [AlertController::class, 'test']);
-
-
-    // ======================
-    // 🧑‍💼 RUTAS SOLO ADMIN
+    // 👑 Administración (solo admin)
     // ======================
     Route::middleware('role:admin')->group(function () {
         Route::apiResource('users', UserController::class);

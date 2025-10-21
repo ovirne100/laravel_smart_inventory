@@ -4,44 +4,48 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\Auth;
 use App\Models\Alert;
+use App\Services\AlertService;
 
 class Inventory extends Model
 {
     // ==================================================
-    // 🧱 CAMPOS PERMITIDOS
+    // 🧱 CAMPOS ASIGNABLES
     // ==================================================
     protected $fillable = [
         'product_id',
         'user_id',
-        'location_id',  // ubicación interna o almacén lógico
-        'stock',        // stock actual
-        'min_stock',    // stock mínimo permitido
+        'warehouse_id',
+        'ubicacion_interna',
+        'lot',
+        'stock',
+        'min_stock',
     ];
 
     // ==================================================
-    // ⚙️ CONFIGURACIÓN DE FILTROS, RELACIONES Y ORDEN
+    // ⚙️ CONFIGURACIÓN DE LISTAS BLANCAS PARA FILTROS
     // ==================================================
-    protected $allowIncluded = ['product', 'user', 'location', 'alerts'];
-    protected $allowFilter   = ['id', 'product_id', 'location_id', 'stock'];
-    protected $allowSort     = ['id', 'product_id', 'stock', 'min_stock'];
+    protected array $allowIncluded = ['product', 'user', 'warehouse', 'alerts'];
+    protected array $allowFilter   = ['product_id', 'warehouse_id', 'ubicacion_interna', 'lot', 'stock'];
+    protected array $allowSort     = ['id', 'product_id', 'stock', 'min_stock', 'created_at'];
 
     // ==================================================
     // 🔗 RELACIONES
     // ==================================================
     public function product()
     {
-        return $this->belongsTo(Product::class, 'product_id');
+        return $this->belongsTo(Product::class);
     }
 
     public function user()
     {
-        return $this->belongsTo(User::class, 'user_id');
+        return $this->belongsTo(User::class);
     }
 
-    public function location()
+    public function warehouse()
     {
-        return $this->belongsTo(Location::class, 'location_id');
+        return $this->belongsTo(Warehouse::class);
     }
 
     public function alerts()
@@ -50,7 +54,7 @@ class Inventory extends Model
     }
 
     // ==================================================
-    // 🔎 SCOPES (Filtros, Orden y Relaciones)
+    // 🔎 SCOPES (INCLUSIÓN, FILTRO, ORDEN, PAGINACIÓN)
     // ==================================================
     public function scopeIncluded(Builder $query)
     {
@@ -79,7 +83,7 @@ class Inventory extends Model
                 } elseif (strtotime($value)) {
                     $query->whereDate($field, $value);
                 } else {
-                    $query->where($field, 'LIKE', '%' . $value . '%');
+                    $query->where($field, 'LIKE', "%{$value}%");
                 }
             }
         }
@@ -109,11 +113,17 @@ class Inventory extends Model
     }
 
     // ==================================================
-    // 🧠 MÉTODOS PERSONALIZADOS
+    // 🧠 LÓGICA DE NEGOCIO
     // ==================================================
-    public function isLowStock()
+    public function isLowStock(): bool
     {
         return $this->stock < $this->min_stock;
+    }
+
+    // Alias para compatibilidad (usa 'stock' internamente)
+    public function getQuantityAttribute()
+    {
+        return $this->stock;
     }
 
     // ==================================================
@@ -121,38 +131,20 @@ class Inventory extends Model
     // ==================================================
     protected static function booted()
     {
+        // 🔐 Asigna automáticamente el usuario logueado
+        static::creating(function ($inventory) {
+            if (Auth::check()) {
+                $inventory->user_id = Auth::id();
+            }
+        });
+
+        // 🚨 Verificar alertas después de crear o actualizar usando AlertService
         static::created(function ($inventory) {
-            $inventory->checkAndCreateAlert();
+            app(AlertService::class)->checkStock($inventory);
         });
 
         static::updated(function ($inventory) {
-            $inventory->checkAndCreateAlert();
+            app(AlertService::class)->checkStock($inventory);
         });
-    }
-
-    // ==================================================
-    // ⚡ LÓGICA PARA CREAR ALERTAS
-    // ==================================================
-    public function checkAndCreateAlert()
-    {
-        // Si el stock está por debajo del mínimo
-        if ($this->isLowStock()) {
-            // Verificar si ya existe una alerta activa
-            $alertExists = $this->alerts()
-                ->where('status', 'pendiente')
-                ->where('alert_type', 'bajo_stock')
-                ->exists();
-
-            if (!$alertExists) {
-                Alert::create([
-                    'inventory_id' => $this->id,
-                    'product_id'   => $this->product_id,
-                    'alert_type'   => 'bajo_stock',
-                    'status'       => 'pendiente',
-                    'message'      => "El producto '{$this->product->name}' tiene un stock bajo ({$this->stock}).",
-                    'date'         => now(),
-                ]);
-            }
-        }
     }
 }

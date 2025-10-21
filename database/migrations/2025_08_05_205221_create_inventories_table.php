@@ -7,7 +7,7 @@ use Illuminate\Support\Facades\Schema;
 return new class extends Migration
 {
     /**
-     * Ejecuta la migración de la tabla de inventarios.
+     * Ejecuta la migración.
      */
     public function up(): void
     {
@@ -18,7 +18,7 @@ return new class extends Migration
             $table->foreignId('product_id')
                 ->constrained('products')
                 ->cascadeOnUpdate()
-                ->restrictOnDelete(); // Evita borrar productos con inventario
+                ->restrictOnDelete();
 
             $table->foreignId('user_id')
                 ->nullable()
@@ -32,17 +32,25 @@ return new class extends Migration
                 ->nullOnDelete()
                 ->cascadeOnUpdate();
 
-            // 📦 Datos del inventario
-            $table->integer('stock')->default(0);       // Stock actual
-            $table->integer('min_stock')->default(0);   // Stock mínimo recomendado
+            // 🧾 Lote
+            $table->string('lot')->nullable();
 
-            // 🕒 Control de tiempo
+            // 📦 Datos del inventario
+            $table->integer('stock')->default(0);
+            $table->integer('min_stock')->default(0);
+
+            // 🏷️ Ubicación interna dentro del almacén
+            $table->string('ubicacion_interna')->nullable();
+
             $table->timestamps();
+
+            // 🔍 Clave única: producto + lote + almacén
+            $table->unique(['product_id', 'lot', 'warehouse_id'], 'unique_inventory_per_lot');
         });
     }
 
     /**
-     * Revertir la migración.
+     * Reviertes la migración.
      */
     public function down(): void
     {
