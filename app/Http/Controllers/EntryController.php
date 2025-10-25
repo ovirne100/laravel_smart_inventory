@@ -3,11 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Services\EntryService;
-use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Log;
-use Exception;
 
 class EntryController extends Controller
 {
@@ -19,156 +17,104 @@ class EntryController extends Controller
         $this->entryService = $entryService;
     }
 
-    /**
-     * 📄 Listar todas las entradas
-     */
+    // Listado de entradas
     public function index(): JsonResponse
     {
         $data = $this->entryService->getAllEntries();
-
         return response()->json([
-            'status'  => 'success',
-            'message' => 'Listado de entradas obtenido correctamente.',
-            'data'    => $data,
+            'status' => 'success',
+            'message' => 'Listado de entradas obtenido correctamente',
+            'data' => $data
         ]);
     }
 
-    /**
-     * ➕ Crear una nueva entrada
-     */
+    // Crear nueva entrada
     public function store(Request $request): JsonResponse
     {
-        try {
-            $validated = $request->validate([
-                'product_id'        => 'required|exists:products,id',
-                'quantity'          => 'required|numeric|min:1',
-                'unit'              => 'nullable|string|max:20',
-                'lot'               => 'nullable|string|max:50',
-                'supplier_id'       => 'required|exists:suppliers,id',
-                'ubicacion_interna' => 'required|string|max:255',
-                'min_stock'         => 'required|numeric|min:0',
-            ]);
+        $validated = $request->validate([
+            'product_id'   => 'required|exists:products,id',
+            'quantity'     => 'required|numeric|min:1',
+            'unit'         => 'nullable|string|max:50',
+            'lot'          => 'nullable|string|max:100',
+            'supplier_id'  => 'nullable|exists:suppliers,id',
+            'warehouse_id' => 'nullable|exists:warehouses,id',
+            'location_id'  => 'nullable|exists:locations,id',
+            'min_stock'    => 'nullable|numeric|min:0',
+        ]);
 
-            $user = Auth::user();
-            if (!$user) {
-                return response()->json([
-                    'status'  => 'error',
-                    'message' => 'Usuario no autenticado.',
-                ], 401);
-            }
+        $userId = Auth::id();
+        $entry = $this->entryService->createEntryWithInventoryAndUser($validated, $userId);
 
-            $entry = $this->entryService->createEntryWithInventoryAndUser($validated, $user->id);
-
-            return response()->json([
-                'status'  => 'success',
-                'message' => '✅ Entrada registrada correctamente.',
-                'data'    => $entry,
-            ], 201);
-
-        } catch (Exception $e) {
-            Log::error('❌ Error al registrar entrada: ' . $e->getMessage(), [
-                'trace' => $e->getTraceAsString(),
-            ]);
-
-            if (config('app.debug')) {
-                return response()->json([
-                    'status'  => 'error',
-                    'message' => 'Error al registrar la entrada.',
-                    'error'   => $e->getMessage(),
-                ], 500);
-            }
-
-            return response()->json([
-                'status'  => 'error',
-                'message' => 'Error al registrar la entrada.',
-            ], 500);
-        }
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Entrada creada correctamente',
+            'data' => $entry
+        ]);
     }
 
-    /**
-     * 🔍 Mostrar una entrada
-     */
+    // Mostrar una entrada específica
     public function show(int $id): JsonResponse
     {
         $entry = $this->entryService->getEntryById($id);
-
         return response()->json([
-            'status'  => 'success',
-            'message' => 'Detalles de la entrada obtenidos correctamente.',
-            'data'    => $entry,
+            'status' => 'success',
+            'message' => 'Entrada obtenida correctamente',
+            'data' => $entry
         ]);
     }
 
-    /**
-     * ✏️ Actualizar una entrada existente
-     */
+    // Actualizar una entrada
     public function update(Request $request, int $id): JsonResponse
     {
         $validated = $request->validate([
-            'quantity'          => 'sometimes|numeric|min:1',
-            'unit'              => 'sometimes|string|max:20',
-            'lot'               => 'sometimes|string|max:50',
-            'ubicacion_interna' => 'sometimes|string|max:255',
-            'min_stock'         => 'sometimes|numeric|min:0',
+            'product_id'   => 'sometimes|exists:products,id',
+            'quantity'     => 'sometimes|numeric|min:1',
+            'unit'         => 'nullable|string|max:50',
+            'lot'          => 'nullable|string|max:100',
+            'supplier_id'  => 'nullable|exists:suppliers,id',
+            'warehouse_id' => 'nullable|exists:warehouses,id',
+            'location_id'  => 'nullable|exists:locations,id',
+            'min_stock'    => 'nullable|numeric|min:0',
         ]);
 
         $entry = $this->entryService->updateEntry($validated, $id);
 
         return response()->json([
-            'status'  => 'success',
-            'message' => 'Entrada actualizada exitosamente.',
-            'data'    => $entry,
+            'status' => 'success',
+            'message' => 'Entrada actualizada correctamente',
+            'data' => $entry
         ]);
     }
 
-    /**
-     * 🗑️ Eliminar una entrada
-     */
+    // Eliminar una entrada
     public function destroy(int $id): JsonResponse
     {
         $this->entryService->deleteEntry($id);
-
         return response()->json([
-            'status'  => 'success',
-            'message' => 'Entrada eliminada correctamente.',
+            'status' => 'success',
+            'message' => 'Entrada eliminada correctamente'
         ]);
     }
 
-    /**
-     * 📊 Resumen de entradas
-     */
+    // Resumen de entradas
     public function summary(): JsonResponse
     {
-        $summary = $this->entryService->getSummary();
-
+        $data = $this->entryService->getSummary();
         return response()->json([
-            'status'  => 'success',
-            'message' => 'Resumen de entradas obtenido correctamente.',
-            'data'    => $summary,
+            'status' => 'success',
+            'message' => 'Resumen de entradas obtenido correctamente',
+            'data' => $data
         ]);
     }
 
-    /**
-     * 📦 Datos para selects de formulario (productos, proveedores)
-     */
+    // Datos para formularios (productos, proveedores, ubicaciones, almacenes)
     public function formData(): JsonResponse
     {
-        try {
-            $data = $this->entryService->formData();
-
-            return response()->json([
-                'status'      => 'success',
-                'message'     => 'Datos del formulario obtenidos correctamente.',
-                'productos'   => $data['products'],
-                'proveedores' => $data['suppliers'],
-            ]);
-        } catch (Exception $e) {
-            Log::error('❌ Error al obtener formData: ' . $e->getMessage());
-
-            return response()->json([
-                'status'  => 'error',
-                'message' => 'Error al obtener datos del formulario.',
-            ], 500);
-        }
+        $data = $this->entryService->formData();
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Datos para formularios obtenidos correctamente',
+            'data' => $data
+        ]);
     }
 }

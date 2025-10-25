@@ -2,64 +2,166 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Warehouse;
+use App\Services\WarehouseService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
+use Exception;
 
-class WarehouseController
+class WarehouseController extends Controller
 {
-    /**
-     * Display a listing of the resource.
-     */
-    public function index()
+    protected WarehouseService $warehouseService;
+
+    public function __construct(WarehouseService $warehouseService)
     {
-        //
+        $this->middleware('auth:sanctum');
+        $this->warehouseService = $warehouseService;
     }
 
     /**
-     * Show the form for creating a new resource.
+     * 📄 Listar todos los almacenes (con filtros, includes, sort y paginación)
      */
-    public function create()
+    public function index(): JsonResponse
     {
-        //
+        try {
+            $warehouses = $this->warehouseService->getAllWarehouses(request());
+
+            return response()->json([
+                'status'  => 'success',
+                'message' => 'Almacenes obtenidos correctamente.',
+                'data'    => $warehouses,
+            ]);
+        } catch (Exception $e) {
+            Log::error('❌ Error al obtener almacenes: ' . $e->getMessage());
+
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Error al obtener almacenes.',
+            ], 500);
+        }
     }
 
     /**
-     * Store a newly created resource in storage.
+     * ➕ Crear nuevo almacén
      */
-    public function store(Request $request)
+    public function store(Request $request): JsonResponse
     {
-        //
+        $validated = $request->validate([
+            'name'     => 'required|string|max:30|unique:warehouses,name',
+            'address'  => 'required|string|max:25',
+            'capacity' => 'required|numeric|min:0',
+        ]);
+
+        try {
+            $warehouse = $this->warehouseService->createWarehouse($validated);
+
+            return response()->json([
+                'status'  => 'success',
+                'message' => '✅ Almacén creado correctamente.',
+                'data'    => $warehouse,
+            ], 201);
+        } catch (Exception $e) {
+            Log::error('❌ Error al crear almacén: ' . $e->getMessage());
+
+            return response()->json([
+                'status'  => 'error',
+                'message' => config('app.debug') ? $e->getMessage() : 'Error al crear el almacén.',
+            ], 500);
+        }
     }
 
     /**
-     * Display the specified resource.
+     * 🔍 Mostrar un almacén específico (incluyendo relaciones)
      */
-    public function show(Warehouse $warehouse)
+    public function show(int $id): JsonResponse
     {
-        //
+        try {
+            $warehouse = $this->warehouseService->getWarehouseById($id);
+
+            return response()->json([
+                'status'  => 'success',
+                'message' => 'Almacén obtenido correctamente.',
+                'data'    => $warehouse,
+            ]);
+        } catch (Exception $e) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Almacén no encontrado.',
+            ], 404);
+        }
     }
 
     /**
-     * Show the form for editing the specified resource.
+     * ✏️ Actualizar almacén
      */
-    public function edit(Warehouse $warehouse)
+    public function update(Request $request, int $id): JsonResponse
     {
-        //
+        $validated = $request->validate([
+            'name'     => 'sometimes|string|max:30|unique:warehouses,name,' . $id,
+            'address'  => 'sometimes|string|max:25',
+            'capacity' => 'sometimes|numeric|min:0',
+        ]);
+
+        try {
+            $warehouse = $this->warehouseService->updateWarehouse($validated, $id);
+
+            return response()->json([
+                'status'  => 'success',
+                'message' => 'Almacén actualizado correctamente.',
+                'data'    => $warehouse,
+            ]);
+        } catch (Exception $e) {
+            Log::error('❌ Error al actualizar almacén: ' . $e->getMessage());
+
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Error al actualizar el almacén.',
+            ], 500);
+        }
     }
 
     /**
-     * Update the specified resource in storage.
+     * 🗑️ Eliminar almacén
      */
-    public function update(Request $request, Warehouse $warehouse)
+    public function destroy(int $id): JsonResponse
     {
-        //
+        try {
+            $this->warehouseService->deleteWarehouse($id);
+
+            return response()->json([
+                'status'  => 'success',
+                'message' => 'Almacén eliminado correctamente.',
+            ]);
+        } catch (Exception $e) {
+            Log::error('❌ Error al eliminar almacén: ' . $e->getMessage());
+
+            return response()->json([
+                'status'  => 'error',
+                'message' => $e->getMessage(),
+            ], 400);
+        }
     }
 
     /**
-     * Remove the specified resource from storage.
+     * 📊 Obtener estadísticas del almacén
      */
-    public function destroy(Warehouse $warehouse)
+    public function stats(int $id): JsonResponse
     {
-        //
+        try {
+            $stats = $this->warehouseService->getWarehouseStats($id);
+
+            return response()->json([
+                'status'  => 'success',
+                'message' => 'Estadísticas obtenidas correctamente.',
+                'data'    => $stats,
+            ]);
+        } catch (Exception $e) {
+            Log::error('❌ Error al obtener estadísticas: ' . $e->getMessage());
+
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Error al obtener estadísticas.',
+            ], 500);
+        }
     }
 }

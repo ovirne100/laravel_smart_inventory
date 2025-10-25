@@ -40,7 +40,7 @@ class StockAlertNotification extends Notification
 
         return (new MailMessage)
             ->subject("🚨 {$alertTypeLabel}: {$productName}")
-            ->greeting("Hola " . ($notifiable->name ?? 'Administrador') . ",")
+            ->greeting("Hola " . ($notifiable->name ?? 'Usuario') . ",")
             ->line("Se ha detectado un problema con el inventario del producto **{$productName}**.")
             ->line("📦 **Stock actual:** {$stock}")
             ->line("🔻 **Stock mínimo permitido:** {$minStock}")
@@ -66,22 +66,22 @@ class StockAlertNotification extends Notification
             'message'    => $this->alert->message,
             'stock'      => $inventory->stock ?? null,
             'min_stock'  => $inventory->min_stock ?? null,
-            'alert_type' => $this->alert->alert_type,  // critical / low_stock
-            'level'      => $alertTypeLabel,          // para mostrar bonito
+            'alert_type' => $this->alert->alert_type,
+            'level'      => $alertTypeLabel,
             'status'     => $this->alert->status,
             'created_at' => $this->alert->created_at,
         ];
     }
 
     /**
-     * 🔹 Convierte alert_type en un label legible
+     * 🔹 Convierte alert_type en un texto legible
      */
     private function getAlertTypeLabel(?string $type): string
     {
         return match($type) {
-            'critical'  => 'Stock Crítico',
-            'low_stock' => 'Stock Bajo',
-            default     => 'Desconocido',
+            'bajo_stock' => 'Stock Bajo',
+            'sin_stock'  => 'Sin Stock',
+            default      => 'Stock Desconocido',
         };
     }
 }

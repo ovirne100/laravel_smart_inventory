@@ -4,116 +4,101 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Warehouse extends Model
 {
-    protected $fillable = ['name', 'address'];
+    /**
+     * 🔒 Campos rellenables
+     */
+    protected $fillable = [
+        'name',
+        'address',
+        'capacity',
+    ];
 
-   protected $allowIncluded = ['internalLocations']; //las posibles Querys que se pueden realizar
-    protected $allowFilter = ['id', 'name'];
-    protected $allowSort = ['id', 'name'];
+    /**
+     * ⚙️ Listas blancas para queries dinámicas
+     */
+    protected array $allowIncluded = ['internalLocations'];
+    protected array $allowFilter   = ['id', 'name', 'address'];
+    protected array $allowSort     = ['id', 'name', 'address'];
 
+    /* ================== RELACIONES ================== */
 
-    public function internalLocations() {
-        return $this->hasMany(Location::class, 'Warehouse_id');
-    }
-
-
-    public function scopeIncluded(Builder $query)
+    /**
+     * 🔗 Relación con ubicaciones internas
+     */
+    public function internalLocations(): HasMany
     {
-        if (empty($this->allowIncluded) || empty(request('included'))) { // validamos que la lista blanca y la variable included enviada a travez de HTTP no este en vacia.
-            return;
-        }
-
-        // return request('included');
-
-        $relations  = explode(',', request('included')); //['posts','relation2']//recuperamos el valor de la variable included y separa sus valores por una coma
-
-         //return $relations;
-
-        $allowIncluded = collect($this->allowIncluded); //colocamos en una colecion lo que tiene $allowIncluded en este caso = ['posts','posts.user']
-
-        foreach ($relations as $key => $relationship) { //recorremos el array de relaciones
-
-            if (!$allowIncluded->contains($relationship)) {
-                unset($relations[$key]);
-            }
-        }
-
-       // return $relations;
-
-        $query->with($relations); //se ejecuta el query con lo que tiene $relations en ultimas es el valor en la url de included
-
+        return $this->hasMany(Location::class, 'warehouse_id');
     }
 
-    public function scopeFilter(Builder $query)
-{
-    if (empty($this->allowFilter) || empty(request('filter'))) {
-        return;
+    /**
+     * 🔗 Relación con entradas
+     */
+    public function entries(): HasMany
+    {
+        return $this->hasMany(Entry::class, 'warehouse_id');
     }
 
-    $filters = request('filter');
-    $allowFilter = collect($this->allowFilter);
+    /**
+     * 🔗 Relación con inventarios
+     */
+    public function inventories(): HasMany
+    {
+        return $this->hasMany(Inventory::class, 'warehouse_id');
+    }
 
-    foreach ($filters as $filter => $value) {
-        if ($allowFilter->contains($filter)) {
+    /* ================== SCOPES ================== */
 
-            // Si el valor es numérico -> búsqueda exacta
+    public function scopeIncluded(Builder $query): Builder
+    {
+        $relations = explode(',', request('included', ''));
+        $relations = array_filter($relations, fn($rel) => in_array($rel, $this->allowIncluded));
+
+        return $relations ? $query->with($relations) : $query;
+    }
+
+    public function scopeFilter(Builder $query): Builder
+    {
+        $filters = request('filter', []);
+        foreach ($filters as $filter => $value) {
+            if (!in_array($filter, $this->allowFilter)) continue;
+
             if (is_numeric($value)) {
                 $query->where($filter, $value);
-            }
-            // Si el valor tiene pinta de fecha -> búsqueda exacta
-            elseif (strtotime($value)) {
+            } elseif (strtotime($value)) {
                 $query->whereDate($filter, $value);
-            }
-            // Si no, asumimos que es texto -> LIKE
-            else {
-                $query->where($filter, 'LIKE', '%' . $value . '%');
+            } else {
+                $query->where($filter, 'LIKE', "%$value%");
             }
         }
+        return $query;
     }
-}
 
-    public function scopeSort(Builder $query)
+    public function scopeSort(Builder $query): Builder
     {
+        $sortFields = explode(',', request('sort', ''));
 
-     if (empty($this->allowSort) || empty(request('sort'))) {
-            return;
-        }
-
-        $sortFields = explode(',', request('sort'));
-        $allowSort = collect($this->allowSort);
-
-      foreach ($sortFields as $sortField) {
-
+        foreach ($sortFields as $sortField) {
             $direction = 'asc';
-
-            if(substr($sortField, 0,1)=='-'){ //cambiamos la consulta a 'desc'si el usuario antecede el menos (-) en el valor de la variable sort
+            if (str_starts_with($sortField, '-')) {
                 $direction = 'desc';
-                $sortField = substr($sortField,1);//copiamos el valor de sort pero omitiendo, el primer caracter por eso inicia desde el indice 1
+                $sortField = substr($sortField, 1);
             }
-            if ($allowSort->contains($sortField)) {
-                $query->orderBy($sortField, $direction);//ejecutamos la query con la direccion deseada sea 'asc' o 'desc'
+
+            if (in_array($sortField, $this->allowSort)) {
+                $query->orderBy($sortField, $direction);
             }
         }
 
+        return $query;
     }
 
     public function scopeGetOrPaginate(Builder $query)
     {
-      if (request('perPage')) {
-            $perPage = intval(request('perPage'));//transformamos la cadena que llega en un numero.
-
-            if($perPage){//como la funcion intval retorna 0 si no puede hacer la conversion 0  es = false
-                return $query->paginate($perPage);//retornamos la cuonsulta de acuerdo a la ingresado en la vaiable $perPage
-            }
-
-         }
-           return $query->get();//sino se pasa el valor de $perPage en la URL se pasan todos los registros.
-        //http://api.codersfree1.test/v1/categories?perPage=2
+        $perPage = intval(request('perPage', 0));
+        return $perPage > 0 ? $query->paginate($perPage) : $query->get();
     }
 }
-
-
-
-

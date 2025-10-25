@@ -2,16 +2,19 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Alert;
+use Illuminate\Http\Request;
 use App\Services\AlertService;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 
 class AlertController extends Controller
 {
-    public function __construct(
-        protected AlertService $alertService
-    ) {}
+    protected AlertService $alertService;
+
+    public function __construct(AlertService $alertService)
+    {
+        $this->alertService = $alertService;
+    }
 
     /**
      * 📋 Listar alertas con filtros opcionales
@@ -24,62 +27,19 @@ class AlertController extends Controller
             'product_id' => 'nullable|integer|exists:products,id',
             'date_from' => 'nullable|date',
             'date_to' => 'nullable|date|after_or_equal:date_from',
-        ], [
-            'alert_type.in' => 'El tipo de alerta debe ser: bajo_stock o sin_stock',
-            'status.in' => 'El estado debe ser: pendiente o resuelta',
-            'product_id.exists' => 'El producto especificado no existe',
         ]);
-
-        // 🧠 Traducir los tipos de alerta a los usados internamente
-        if (!empty($validated['alert_type'])) {
-            $validated['alert_type'] = match ($validated['alert_type']) {
-                'bajo_stock' => Alert::TYPE_LOW_STOCK,
-                'sin_stock'  => Alert::TYPE_OUT_OF_STOCK,
-                default      => $validated['alert_type'],
-            };
-        }
-
-        // 🧠 Traducir los estados a los usados internamente
-        if (!empty($validated['status'])) {
-            $validated['status'] = match ($validated['status']) {
-                'pendiente' => Alert::STATUS_ACTIVE,
-                'resuelta'  => Alert::STATUS_RESOLVED,
-                default     => $validated['status'],
-            };
-        }
 
         $alerts = $this->alertService->getAlerts($validated);
 
         return response()->json([
-            'success' => true,
-            'message' => 'Listado de alertas obtenido correctamente',
+            'status' => 'success',
+            'message' => 'Listado de alertas obtenido correctamente.',
             'data' => $alerts,
-            'total' => $alerts->count(),
         ], 200);
     }
 
     /**
-     * 🔍 Mostrar una alerta específica
-     */
-    public function show(int $id): JsonResponse
-    {
-        try {
-            $alert = Alert::with(['product', 'inventory'])->findOrFail($id);
-
-            return response()->json([
-                'success' => true,
-                'data' => $alert,
-            ], 200);
-        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Alerta no encontrada',
-            ], 404);
-        }
-    }
-
-    /**
-     * ✅ Resolver una alerta manualmente
+     * ✅ Resolver una alerta específica
      */
     public function resolve(int $id): JsonResponse
     {
@@ -87,29 +47,42 @@ class AlertController extends Controller
             $alert = $this->alertService->resolveAlert($id);
 
             return response()->json([
-                'success' => true,
-                'message' => 'Alerta resuelta correctamente',
+                'status' => 'success',
+                'message' => 'Alerta resuelta correctamente.',
                 'data' => $alert,
             ], 200);
-        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+        } catch (ModelNotFoundException $e) {
             return response()->json([
-                'success' => false,
-                'message' => 'Alerta no encontrada',
+                'status' => 'error',
+                'message' => 'Alerta no encontrada.',
             ], 404);
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Error al resolver la alerta: ' . $e->getMessage(),
+            ], 500);
         }
     }
 
     /**
-     * 📊 Obtener estadísticas de alertas
+     * 📊 Obtener estadísticas de alertas (por tipo y estado)
      */
     public function stats(): JsonResponse
     {
-        $stats = $this->alertService->getStats();
+        try {
+            $stats = $this->alertService->getStats();
 
-        return response()->json([
-            'success' => true,
-            'data' => $stats,
-        ], 200);
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Estadísticas de alertas obtenidas correctamente.',
+                'data' => $stats,
+            ], 200);
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Error al obtener estadísticas: ' . $e->getMessage(),
+            ], 500);
+        }
     }
 
     /**
@@ -121,48 +94,14 @@ class AlertController extends Controller
             $this->alertService->checkAllInventory();
 
             return response()->json([
-                'success' => true,
-                'message' => 'Inventario verificado y alertas actualizadas correctamente',
-                'stats' => $this->alertService->getStats(),
+                'status' => 'success',
+                'message' => 'Inventario verificado y alertas actualizadas correctamente.',
             ], 200);
         } catch (\Exception $e) {
             return response()->json([
-                'success' => false,
-                'message' => 'Error al verificar el inventario',
-                'error' => $e->getMessage(),
+                'status' => 'error',
+                'message' => 'Error al verificar el inventario: ' . $e->getMessage(),
             ], 500);
         }
-    }
-
-    /**
-     * ℹ️ Obtener opciones válidas para filtros
-     */
-    public function filterOptions(): JsonResponse
-    {
-        return response()->json([
-            'success' => true,
-            'data' => [
-                'alert_types' => [
-                    [
-                        'value' => Alert::TYPE_LOW_STOCK,
-                        'label' => '📉 Stock Bajo'
-                    ],
-                    [
-                        'value' => Alert::TYPE_OUT_OF_STOCK,
-                        'label' => '🚫 Sin Stock'
-                    ],
-                ],
-                'statuses' => [
-                    [
-                        'value' => Alert::STATUS_ACTIVE,
-                        'label' => 'Pendiente'
-                    ],
-                    [
-                        'value' => Alert::STATUS_RESOLVED,
-                        'label' => 'Resuelta'
-                    ],
-                ]
-            ]
-        ], 200);
     }
 }
