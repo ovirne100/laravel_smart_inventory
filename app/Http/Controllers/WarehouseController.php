@@ -18,8 +18,9 @@ class WarehouseController extends Controller
     /**
      * 🏗️ Crear un nuevo almacén
      */
-    public function store(Request $request)
-    {
+   public function store(Request $request)
+{
+    try {
         $validated = $request->validate([
             'name'     => 'required|string|max:50',
             'address'  => 'required|string|max:100',
@@ -32,7 +33,13 @@ class WarehouseController extends Controller
             'message' => 'Warehouse creado exitosamente',
             'data'    => $warehouse
         ], 201);
+    } catch (\Exception $e) {
+        return response()->json([
+            'message' => 'Error al crear el almacén',
+            'error'   => $e->getMessage()
+        ], 500);
     }
+}
 
     /**
      * 🔍 Mostrar un almacén específico

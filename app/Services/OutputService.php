@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+
 use App\Models\Output;
 use App\Models\Product;
 use App\Models\Inventory;

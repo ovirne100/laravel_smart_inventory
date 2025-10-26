@@ -24,24 +24,40 @@ class Alert extends Model
         'resolved_at' => 'datetime',
     ];
 
-    // ✅ CAMBIADO: "resuelto" → "resuelta" (femenino, natural en español)
+    // Constantes
     const TYPE_LOW_STOCK = 'bajo_stock';
     const TYPE_OUT_OF_STOCK = 'sin_stock';
     const STATUS_ACTIVE = 'pendiente';
-    const STATUS_RESOLVED = 'resuelta';  // ✅ AHORA ES "resuelta"
+    const STATUS_RESOLVED = 'resuelta';
 
-    // Relaciones
+    /* ----------------- RELACIONES ----------------- */
+
+    /**
+     * Relación con producto
+     */
     public function product()
     {
         return $this->belongsTo(Product::class);
     }
 
+    /**
+     * Relación con inventario
+     */
     public function inventory()
     {
         return $this->belongsTo(Inventory::class);
     }
 
-    // Scopes
+    /**
+     * 📦 NUEVA: Relación con órdenes (una alerta puede generar múltiples órdenes)
+     */
+    public function orders()
+    {
+        return $this->hasMany(Order::class);
+    }
+
+    /* ----------------- SCOPES ----------------- */
+
     public function scopeActive($query)
     {
         return $query->where('status', self::STATUS_ACTIVE);
@@ -62,7 +78,8 @@ class Alert extends Model
         return $query->where('alert_type', self::TYPE_OUT_OF_STOCK);
     }
 
-    // Helpers
+    /* ----------------- HELPERS ----------------- */
+
     public function isActive(): bool
     {
         return $this->status === self::STATUS_ACTIVE;
@@ -73,12 +90,21 @@ class Alert extends Model
         return $this->status === self::STATUS_RESOLVED;
     }
 
-    // Accessors para labels
+    /**
+     * 📦 NUEVO: Verificar si tiene órdenes asociadas
+     */
+    public function hasOrders(): bool
+    {
+        return $this->orders()->exists();
+    }
+
+    /* ----------------- ACCESSORS ----------------- */
+
     public function getStatusLabelAttribute(): string
     {
         return match($this->status) {
             self::STATUS_ACTIVE => 'Pendiente',
-            self::STATUS_RESOLVED => 'Resuelta',  // ✅ También cambiar aquí
+            self::STATUS_RESOLVED => 'Resuelta',
             default => 'Desconocido'
         };
     }

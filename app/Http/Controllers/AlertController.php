@@ -16,47 +16,64 @@ class AlertController extends Controller
     /**
      * 📋 Listar alertas con filtros opcionales
      */
-    public function index(Request $request): JsonResponse
-    {
-        $validated = $request->validate([
-            'alert_type' => 'nullable|in:bajo_stock,sin_stock',
-            'status' => 'nullable|in:pendiente,resuelta',
-            'product_id' => 'nullable|integer|exists:products,id',
-            'date_from' => 'nullable|date',
-            'date_to' => 'nullable|date|after_or_equal:date_from',
-        ], [
-            'alert_type.in' => 'El tipo de alerta debe ser: bajo_stock o sin_stock',
-            'status.in' => 'El estado debe ser: pendiente o resuelta',
-            'product_id.exists' => 'El producto especificado no existe',
-        ]);
+   public function index(Request $request): JsonResponse
+{
+    $validated = $request->validate([
+        'alert_type' => 'nullable|in:bajo_stock,sin_stock',
+        'status' => 'nullable|in:pendiente,resuelta',
+        'product_id' => 'nullable|integer|exists:products,id',
+        'date_from' => 'nullable|date',
+        'date_to' => 'nullable|date|after_or_equal:date_from',
+    ], [
+        'alert_type.in' => 'El tipo de alerta debe ser: bajo_stock o sin_stock',
+        'status.in' => 'El estado debe ser: pendiente o resuelta',
+        'product_id.exists' => 'El producto especificado no existe',
+    ]);
 
-        // 🧠 Traducir los tipos de alerta a los usados internamente
-        if (!empty($validated['alert_type'])) {
-            $validated['alert_type'] = match ($validated['alert_type']) {
-                'bajo_stock' => Alert::TYPE_LOW_STOCK,
-                'sin_stock'  => Alert::TYPE_OUT_OF_STOCK,
-                default      => $validated['alert_type'],
-            };
-        }
-
-        // 🧠 Traducir los estados a los usados internamente
-        if (!empty($validated['status'])) {
-            $validated['status'] = match ($validated['status']) {
-                'pendiente' => Alert::STATUS_ACTIVE,
-                'resuelta'  => Alert::STATUS_RESOLVED,
-                default     => $validated['status'],
-            };
-        }
-
-        $alerts = $this->alertService->getAlerts($validated);
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Listado de alertas obtenido correctamente',
-            'data' => $alerts,
-            'total' => $alerts->count(),
-        ], 200);
+    // Traducir los filtros internos
+    if (!empty($validated['alert_type'])) {
+        $validated['alert_type'] = match ($validated['alert_type']) {
+            'bajo_stock' => Alert::TYPE_LOW_STOCK,
+            'sin_stock'  => Alert::TYPE_OUT_OF_STOCK,
+            default      => $validated['alert_type'],
+        };
     }
+
+    if (!empty($validated['status'])) {
+        $validated['status'] = match ($validated['status']) {
+            'pendiente' => Alert::STATUS_ACTIVE,
+            'resuelta'  => Alert::STATUS_RESOLVED,
+            default     => $validated['status'],
+        };
+    }
+
+    // Obtener alertas y mapear para incluir lote y referencia
+    $alerts = $this->alertService->getAlerts($validated)->map(function($alert) {
+        return [
+            'id' => $alert->id,
+            'message' => $alert->message,
+            'alert_type' => $alert->alert_type,
+            'status' => $alert->status,
+            'date' => $alert->date,
+            'resolved_at' => $alert->resolved_at,
+            'product' => [
+                'id' => $alert->product->id ?? null,
+                'name' => $alert->product->name ?? 'Producto desconocido',
+                'lot' => $alert->product->batch ?? null,        // ✅ usar batch
+                'reference' => $alert->product->reference ?? null,
+            ],
+            'inventory' => $alert->inventory ?? null,
+        ];
+    });
+
+    return response()->json([
+        'success' => true,
+        'message' => 'Listado de alertas obtenido correctamente',
+        'data' => $alerts,
+        'total' => $alerts->count(),
+    ], 200);
+}
+
 
     /**
      * 🔍 Mostrar una alerta específica

@@ -9,18 +9,19 @@ use Illuminate\Support\Facades\DB;
 class ProductService
 {
     public function getAll($filters = [])
-    {
-        $query = Product::with(['categoria', 'inventory'])
-            ->search($filters['search'] ?? null)
-            ->category($filters['category_id'] ?? null)
-            ->status($filters['status'] ?? null);
+{
+    $query = Product::with(['categoria', 'inventory', 'suppliers'])
+        ->search($filters['search'] ?? null)
+        ->filterByCategory($filters['category_id'] ?? null)
+        ->status($filters['status'] ?? null);
 
-        if (isset($filters['min_price']) && isset($filters['max_price'])) {
-            $query->priceRange($filters['min_price'], $filters['max_price']);
-        }
-
-        return $query->paginate(100);
+    if (isset($filters['min_price']) && isset($filters['max_price'])) {
+        $query->priceRange($filters['min_price'], $filters['max_price']);
     }
+
+    return $query->paginate($filters['perPage'] ?? 100);
+}
+
 
     /**
      * Crear producto con inventario automático

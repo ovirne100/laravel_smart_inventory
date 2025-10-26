@@ -4,9 +4,12 @@ namespace App\Services;
 
 use App\Models\Alert;
 use App\Models\Inventory;
+use App\Models\User;
+use App\Notifications\StockAlertNotification;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Iluminate\Suppor\t\Facades\Notification;
 
 class AlertService
 {
@@ -38,17 +41,14 @@ class AlertService
      */
     private function determineAlertType(int $currentStock, int $minStock): ?string
     {
-        // ✅ Si no hay stock
         if ($currentStock == 0) {
             return Alert::TYPE_OUT_OF_STOCK;
         }
 
-        // ✅ Si hay stock pero es menor al mínimo
         if ($currentStock > 0 && $currentStock < $minStock) {
             return Alert::TYPE_LOW_STOCK;
         }
 
-        // ✅ Stock normal
         return null;
     }
 
@@ -65,7 +65,7 @@ class AlertService
             // Crear o actualizar alerta
             $message = $this->generateMessage($product, $currentStock, $alertType);
 
-            Alert::updateOrCreate(
+            $alert = Alert::updateOrCreate(
                 [
                     'product_id' => $product->id,
                     'status' => Alert::STATUS_ACTIVE
@@ -78,9 +78,32 @@ class AlertService
                     'resolved_at' => null,
                 ]
             );
+
+            // 📩 Enviar notificación a administradores y empleados
+            $this->notifyUsers($alert);
+
         } elseif ($activeAlert) {
             // Resolver alerta si el stock se normalizó
             $this->autoResolveAlert($activeAlert, $product, $currentStock);
+        }
+    }
+
+    /**
+     * 📢 Envía la notificación a empleados y administradores
+     */
+    private function notifyUsers(Alert $alert): void
+    {
+        try {
+            $users = User::whereHas('role', function ($query) {
+                $query->whereIn('name', ['admin', 'empleado']);
+            })->get();
+
+            foreach ($users as $user) {
+                $user->notify(new StockAlertNotification($alert));
+            }
+
+        } catch (\Exception $e) {
+            Log::error("Error al enviar notificación de alerta {$alert->id}: {$e->getMessage()}");
         }
     }
 
@@ -156,8 +179,8 @@ class AlertService
         }
 
         return $query->orderBy('date', 'desc')
-                    ->orderBy('created_at', 'desc')
-                    ->get();
+                     ->orderBy('created_at', 'desc')
+                     ->get();
     }
 
     /**
@@ -182,12 +205,12 @@ class AlertService
     public function getStats(): array
     {
         return [
-            'total' => Alert::count(),
-            'active' => Alert::active()->count(),
-            'resolved' => Alert::resolved()->count(),
-            'low_stock' => Alert::lowStock()->count(),
+            'total'        => Alert::count(),
+            'active'       => Alert::active()->count(),
+            'resolved'     => Alert::resolved()->count(),
+            'low_stock'    => Alert::lowStock()->count(),
             'out_of_stock' => Alert::outOfStock()->count(),
-            'today' => Alert::whereDate('date', today())->count(),
+            'today'        => Alert::whereDate('date', today())->count(),
         ];
     }
 }

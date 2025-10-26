@@ -8,30 +8,29 @@ return new class extends Migration
 {
     public function up(): void
     {
-
         Schema::create('product_supplier', function (Blueprint $table) {
-    // Crucial Pivot Data
-    $table->decimal('unit_cost', 10, 2);
-    $table->string('supplier_reference', 50)->nullable();
+            // 🔹 Campos pivot
+            $table->decimal('unit_cost', 10, 2);
+            $table->string('supplier_reference', 50)->nullable();
+            $table->string('batch', 100)->nullable();
 
-    // Foreign Keys (No autoincrement ID needed for the pivot table)
-    $table->foreignId('supplier_id')
-        ->constrained('suppliers')
-        ->cascadeOnDelete();
+            // 🔹 Relaciones
+            $table->foreignId('supplier_id')
+                ->constrained('suppliers')
+                ->cascadeOnDelete();
 
-    $table->foreignId('product_id')
-        ->constrained('products')
-        ->cascadeOnDelete();
+            $table->foreignId('product_id')
+                ->constrained('products')
+                ->cascadeOnDelete();
 
-    // Composite Primary Key
-    $table->primary(['supplier_id', 'product_id']);
-});
+            // 🔹 Llave compuesta
+            $table->primary(['supplier_id', 'product_id']);
 
+            // 🔹 Fechas de creación/actualización
+            $table->timestamps();
+        });
     }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down(): void
     {
         Schema::dropIfExists('product_supplier');

@@ -22,12 +22,10 @@ class Entry extends Model
         'unit',               // Unidad de medida
         'lot',                // Lote
         'supplier_id',
-
         'ubicacion_interna',  // Ubicación interna
         'min_stock',          // Stock mínimo
         'stock',              // Stock actual
         'user_id',            // Usuario autenticado que crea la entrada
-
     ];
 
     /*
