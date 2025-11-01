@@ -2,64 +2,225 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Order;
+use App\Services\OrderService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\Log;
 
-class OrderController
+class OrderController extends Controller
 {
-    /**
-     * Display a listing of the resource.
-     */
-    public function index()
+    protected $orderService;
+
+    public function __construct(OrderService $orderService)
     {
-        //
+        $this->orderService = $orderService;
     }
 
     /**
-     * Show the form for creating a new resource.
+     * 📋 Obtener todas las órdenes
      */
-    public function create()
+    public function index(Request $request)
     {
-        //
+        try {
+            $filters = $request->only(['status', 'supplier_id', 'product_id', 'date_from', 'date_to']);
+            $orders = $this->orderService->getOrders($filters);
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Órdenes obtenidas correctamente.',
+                'data' => $orders
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error al obtener órdenes: ' . $e->getMessage());
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Error al obtener órdenes.',
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
 
     /**
-     * Store a newly created resource in storage.
+     * 📄 Obtener una orden específica
      */
-    public function store(Request $request)
+    public function show($id)
     {
-        //
+        try {
+            $order = $this->orderService->getOrder($id);
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Orden obtenida correctamente.',
+                'data' => $order
+            ]);
+        } catch (\Exception $e) {
+            Log::error("Error al obtener orden {$id}: " . $e->getMessage());
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Orden no encontrada.',
+                'error' => $e->getMessage()
+            ], 404);
+        }
     }
 
     /**
-     * Display the specified resource.
+     * 📦 Crear orden desde una alerta
      */
-    public function show(Order $order)
+    public function createFromAlert(Request $request)
     {
-        //
+        $validator = Validator::make($request->all(), [
+            'alert_id' => 'required|integer|exists:alerts,id',
+            'product_id' => 'required|integer|exists:products,id',
+            'supplier_id' => 'required|integer|exists:suppliers,id',
+            'quantity' => 'required|integer|min:1',
+            'notes' => 'nullable|string|max:1000',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Errores de validación.',
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        try {
+            $order = $this->orderService->createFromAlert($request->all());
+
+            return response()->json([
+                'status' => 'success',
+                'message' => '✅ Orden creada y correo enviado al proveedor exitosamente.',
+                'data' => $order
+            ], 201);
+        } catch (\Exception $e) {
+            Log::error('Error al crear orden desde alerta: ' . $e->getMessage());
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Error al crear la orden.',
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
 
     /**
-     * Show the form for editing the specified resource.
+     * 🔄 Actualizar estado de una orden
      */
-    public function edit(Order $order)
+    public function updateStatus(Request $request, $id)
     {
-        //
+        $validator = Validator::make($request->all(), [
+            'status' => 'required|string|in:pendiente,enviado,recibido,cancelado'
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Estado inválido.',
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        try {
+            $order = $this->orderService->updateStatus($id, $request->status);
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Estado de orden actualizado correctamente.',
+                'data' => $order
+            ]);
+        } catch (\Exception $e) {
+            Log::error("Error al actualizar estado de orden {$id}: " . $e->getMessage());
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Error al actualizar el estado.',
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
 
     /**
-     * Update the specified resource in storage.
+     * ❌ Cancelar una orden
      */
-    public function update(Request $request, Order $order)
+    public function cancel(Request $request, $id)
     {
-        //
+        $validator = Validator::make($request->all(), [
+            'reason' => 'nullable|string|max:500'
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Datos inválidos.',
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        try {
+            $order = $this->orderService->cancelOrder($id, $request->reason);
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Orden cancelada correctamente.',
+                'data' => $order
+            ]);
+        } catch (\Exception $e) {
+            Log::error("Error al cancelar orden {$id}: " . $e->getMessage());
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Error al cancelar la orden.',
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
 
     /**
-     * Remove the specified resource from storage.
+     * 📊 Obtener estadísticas de órdenes
      */
-    public function destroy(Order $order)
+    public function stats()
     {
-        //
+        try {
+            $stats = $this->orderService->getStats();
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Estadísticas obtenidas correctamente.',
+                'data' => $stats
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error al obtener estadísticas: ' . $e->getMessage());
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Error al obtener estadísticas.',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * 🔄 Reenviar email de orden
+     */
+    public function resendEmail($id)
+    {
+        try {
+            $this->orderService->resendEmail($id);
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Email reenviado correctamente al proveedor.'
+            ]);
+        } catch (\Exception $e) {
+            Log::error("Error al reenviar email de orden {$id}: " . $e->getMessage());
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Error al reenviar el email.',
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
 }

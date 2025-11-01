@@ -2,105 +2,218 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Alert;
 use Illuminate\Http\Request;
-use App\Services\AlertService;
-use Illuminate\Http\JsonResponse;
-use Illuminate\Database\Eloquent\ModelNotFoundException;
 
 class AlertController extends Controller
 {
-    protected AlertService $alertService;
-
-    public function __construct(AlertService $alertService)
-    {
-        $this->alertService = $alertService;
-    }
-
     /**
-     * 📋 Listar alertas con filtros opcionales
+     * 📦 Obtener todas las alertas (con producto, inventario y proveedor)
      */
-    public function index(Request $request): JsonResponse
-    {
-        $validated = $request->validate([
-            'alert_type' => 'nullable|in:bajo_stock,sin_stock',
-            'status' => 'nullable|in:pendiente,resuelta',
-            'product_id' => 'nullable|integer|exists:products,id',
-            'date_from' => 'nullable|date',
-            'date_to' => 'nullable|date|after_or_equal:date_from',
-        ]);
-
-        $alerts = $this->alertService->getAlerts($validated);
-
-        return response()->json([
-            'status' => 'success',
-            'message' => 'Listado de alertas obtenido correctamente.',
-            'data' => $alerts,
-        ], 200);
-    }
-
-    /**
-     * ✅ Resolver una alerta específica
-     */
-    public function resolve(int $id): JsonResponse
+    public function index(Request $request)
     {
         try {
-            $alert = $this->alertService->resolveAlert($id);
+            $query = Alert::with([
+                'product' => function($query) {
+                    $query->with('suppliers'); // Cargar proveedores del producto
+                },
+                'inventory' => function($query) {
+                    $query->with(['product' => function($q) {
+                        $q->with('suppliers'); // Cargar proveedores desde inventario también
+                    }]);
+                }
+            ]);
+
+            // 🔹 Filtros opcionales desde Angular
+            if ($request->filled('alert_type')) {
+                $query->where('alert_type', $request->alert_type);
+            }
+
+            if ($request->filled('status')) {
+                $query->where('status', $request->status);
+            }
+
+            $alerts = $query->orderByDesc('created_at')->get();
+
+            // 🔹 Transformar respuesta para asegurar que supplier esté disponible
+            $alerts = $alerts->map(function($alert) {
+                // Obtener el primer proveedor disponible
+                $supplier = null;
+
+                if ($alert->product && $alert->product->suppliers->isNotEmpty()) {
+                    $supplier = $alert->product->suppliers->first();
+                } elseif ($alert->inventory && $alert->inventory->product && $alert->inventory->product->suppliers->isNotEmpty()) {
+                    $supplier = $alert->inventory->product->suppliers->first();
+                }
+
+                // Añadir supplier directamente al producto para facilitar acceso en frontend
+                if ($alert->product && $supplier) {
+                    $alert->product->supplier = $supplier;
+                }
+
+                if ($alert->inventory && $alert->inventory->product && $supplier) {
+                    $alert->inventory->product->supplier = $supplier;
+                }
+
+                return $alert;
+            });
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Alertas obtenidas correctamente.',
+                'data' => $alerts
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Error al obtener alertas.',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * 📦 Mostrar una alerta específica
+     */
+    public function show($id)
+    {
+        try {
+            $alert = Alert::with([
+                'product' => function($query) {
+                    $query->with('suppliers');
+                },
+                'inventory' => function($query) {
+                    $query->with(['product' => function($q) {
+                        $q->with('suppliers');
+                    }]);
+                }
+            ])->findOrFail($id);
+
+            // Añadir supplier como objeto único
+            $supplier = null;
+            if ($alert->product && $alert->product->suppliers->isNotEmpty()) {
+                $supplier = $alert->product->suppliers->first();
+                $alert->product->supplier = $supplier;
+            } elseif ($alert->inventory && $alert->inventory->product && $alert->inventory->product->suppliers->isNotEmpty()) {
+                $supplier = $alert->inventory->product->suppliers->first();
+                $alert->inventory->product->supplier = $supplier;
+            }
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Alerta encontrada correctamente.',
+                'data' => $alert
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Error al obtener la alerta.',
+                'error' => $e->getMessage()
+            ], 404);
+        }
+    }
+
+    /**
+     * ✅ Resolver una alerta manualmente
+     */
+    public function resolve($id)
+    {
+        try {
+            $alert = Alert::findOrFail($id);
+
+            $alert->update([
+                'status' => Alert::STATUS_RESOLVED,
+                'resolved_at' => now()
+            ]);
 
             return response()->json([
                 'status' => 'success',
                 'message' => 'Alerta resuelta correctamente.',
-                'data' => $alert,
-            ], 200);
-        } catch (ModelNotFoundException $e) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Alerta no encontrada.',
-            ], 404);
+                'data' => $alert
+            ]);
         } catch (\Exception $e) {
             return response()->json([
                 'status' => 'error',
-                'message' => 'Error al resolver la alerta: ' . $e->getMessage(),
+                'message' => 'Error al resolver la alerta.',
+                'error' => $e->getMessage()
             ], 500);
         }
     }
 
     /**
-     * 📊 Obtener estadísticas de alertas (por tipo y estado)
+     * 🔄 Reabrir una alerta resuelta
      */
-    public function stats(): JsonResponse
+    public function reopen($id)
     {
         try {
-            $stats = $this->alertService->getStats();
+            $alert = Alert::findOrFail($id);
+
+            $alert->update([
+                'status' => Alert::STATUS_ACTIVE,
+                'resolved_at' => null
+            ]);
 
             return response()->json([
                 'status' => 'success',
-                'message' => 'Estadísticas de alertas obtenidas correctamente.',
-                'data' => $stats,
-            ], 200);
+                'message' => 'Alerta reabierta correctamente.',
+                'data' => $alert
+            ]);
         } catch (\Exception $e) {
             return response()->json([
                 'status' => 'error',
-                'message' => 'Error al obtener estadísticas: ' . $e->getMessage(),
+                'message' => 'Error al reabrir la alerta.',
+                'error' => $e->getMessage()
             ], 500);
         }
     }
 
     /**
-     * 🔄 Verificar todo el inventario y actualizar alertas
+     * 🧹 Eliminar una alerta
      */
-    public function checkAll(): JsonResponse
+    public function destroy($id)
     {
         try {
-            $this->alertService->checkAllInventory();
+            $alert = Alert::findOrFail($id);
+            $alert->delete();
 
             return response()->json([
                 'status' => 'success',
-                'message' => 'Inventario verificado y alertas actualizadas correctamente.',
-            ], 200);
+                'message' => 'Alerta eliminada correctamente.'
+            ]);
         } catch (\Exception $e) {
             return response()->json([
                 'status' => 'error',
-                'message' => 'Error al verificar el inventario: ' . $e->getMessage(),
+                'message' => 'Error al eliminar la alerta.',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * 📊 Obtener estadísticas de alertas
+     */
+    public function stats()
+    {
+        try {
+            $stats = [
+                'total' => Alert::count(),
+                'active' => Alert::active()->count(),
+                'resolved' => Alert::resolved()->count(),
+                'low_stock' => Alert::lowStock()->count(),
+                'out_of_stock' => Alert::outOfStock()->count(),
+                'today' => Alert::whereDate('date', today())->count(),
+            ];
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Estadísticas obtenidas correctamente.',
+                'data' => $stats
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Error al obtener estadísticas.',
+                'error' => $e->getMessage()
             ], 500);
         }
     }

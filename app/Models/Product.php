@@ -3,6 +3,9 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use App\Models\Category;
+use App\Models\ProductDetail;
+use App\Models\Inventory;
 use App\Models\Supplier;
 
 class Product extends Model
@@ -14,48 +17,85 @@ class Product extends Model
         'unit_measurement',
         'batch',
         'expiration_date',
-        'image'
+        'image',
     ];
 
     protected $casts = [
         'expiration_date' => 'date:Y-m-d',
     ];
 
-    /** 🔹 Accessor para URL completa de imagen */
-    public function getImageUrlAttribute()
+    /* ============================================================
+     *  ACCESSORS
+     * ============================================================ */
+    /**
+     * 🔹 Retorna la URL completa de la imagen
+     */
+    public function getImageUrlAttribute(): ?string
     {
-        if ($this->image) {
-            return url($this->image);
-        }
-        return null;
+        return $this->image ? url($this->image) : null;
     }
 
-    /** 🔹 Relaciones */
+    /* ============================================================
+     *  RELACIONES
+     * ============================================================ */
+
+    /**
+     * 🔹 Relación con la categoría del producto
+     */
     public function category()
     {
         return $this->belongsTo(Category::class, 'category_id');
     }
 
-    // Alias en español (mantén ambas si quieres compatibilidad)
+/**
+ * 🔹 Relación con órdenes
+ */
+public function orders()
+{
+    return $this->hasMany(Order::class);
+}
+
+    /**
+     * Alias en español (opcional)
+     */
     public function categoria()
     {
         return $this->category();
     }
 
+    /**
+     * 🔹 Relación con los detalles del producto
+     */
     public function detalles()
     {
         return $this->hasMany(ProductDetail::class);
     }
 
-    /** 🔹 Relación con inventario */
+    /**
+     * 🔹 Relación uno a uno con inventario
+     */
     public function inventory()
     {
         return $this->hasOne(Inventory::class, 'product_id');
     }
 
-    /** 🔹 Scopes - ¡RENOMBRADOS para evitar conflictos! */
+    /**
+     * 🔹 Relación muchos a muchos con proveedores
+     *
+     * ⚠️ Solo se mantienen los IDs — no se incluyen columnas pivot que no existen.
+     */
+    public function suppliers()
+    {
+        return $this->belongsToMany(Supplier::class, 'product_supplier', 'product_id', 'supplier_id');
+    }
 
-    // ✅ Scope renombrado: scopeCategory -> scopeFilterByCategory
+    /* ============================================================
+     *  SCOPES (Filtros personalizados)
+     * ============================================================ */
+
+    /**
+     * 🔹 Filtrar por categoría
+     */
     public function scopeFilterByCategory($query, $category = null)
     {
         if ($category !== null) {
@@ -64,6 +104,9 @@ class Product extends Model
         return $query;
     }
 
+    /**
+     * 🔹 Filtrar por estado
+     */
     public function scopeStatus($query, $status = null)
     {
         if ($status !== null) {
@@ -72,6 +115,9 @@ class Product extends Model
         return $query;
     }
 
+    /**
+     * 🔹 Filtrar por rango de precios (para futuras ampliaciones)
+     */
     public function scopePriceRange($query, $min = null, $max = null)
     {
         if ($min !== null && $max !== null) {
@@ -80,19 +126,15 @@ class Product extends Model
         return $query;
     }
 
+    /**
+     * 🔹 Buscar por nombre o referencia
+     */
     public function scopeSearch($query, $term = null)
     {
         if ($term) {
-            return $query->where('name', 'like', "%$term%");
+            return $query->where('name', 'like', "%$term%")
+                         ->orWhere('reference', 'like', "%$term%");
         }
         return $query;
-    }
-
-    // Relación con Supplier (muchos a muchos)
-    public function suppliers()
-    {
-        return $this->belongsToMany(Supplier::class, 'product_supplier', 'product_id', 'supplier_id')
-                    ->withPivot('unit_cost', 'supplier_reference')
-                    ->withTimestamps();
     }
 }

@@ -1,6 +1,10 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+
+// ======================
+// 🧩 Controladores
+// ======================
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\RoleController;
@@ -24,9 +28,9 @@ use App\Http\Controllers\DashboardController;
 
 /*
 |--------------------------------------------------------------------------
-| API Routes - Sistema de Inventario
+| API Routes - Sistema de Inventario Inteligente
 |--------------------------------------------------------------------------
-| Rutas organizadas por módulos con prioridad correcta
+| Rutas organizadas por módulos con jerarquía y seguridad
 |--------------------------------------------------------------------------
 */
 
@@ -59,20 +63,16 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('dashboard/summary', [DashboardController::class, 'summary']);
 
     // ======================
-    // 🚨 ALERTAS (PRIORIDAD)
+    // 🚨 ALERTAS
     // ======================
     Route::prefix('alerts')->group(function () {
-        // 📊 Obtener estadísticas de alertas
-        Route::get('stats', [AlertController::class, 'stats']);
+        Route::get('stats', [AlertController::class, 'stats']);               // Estadísticas
+        Route::post('check-all', [AlertController::class, 'checkAll']);       // Verifica todo el inventario
+        Route::get('/', [AlertController::class, 'index']);                   // Lista con filtros
+        Route::put('{id}/resolve', [AlertController::class, 'resolve']);      // Marcar como resuelta
 
-        // 🔄 Verificar todo el inventario y actualizar alertas
-        Route::post('check-all', [AlertController::class, 'checkAll']);
-
-        // 📋 Listar alertas con filtros opcionales (?alert_type=low_stock&status=active)
-        Route::get('/', [AlertController::class, 'index']);
-
-        // ✅ Marcar alerta como resuelta
-        Route::put('{id}/resolve', [AlertController::class, 'resolve']);
+        // 🆕 Crear orden automática desde alerta
+        Route::post('{alert}/create-order', [OrderController::class, 'createFromAlert']);
     });
 
     // ======================
@@ -96,14 +96,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('product-details', ProductDetailController::class);
 
     // ======================
-    // 📦 Inventarios (ACTUALIZADO)
+    // 🧮 Inventarios
     // ======================
     Route::prefix('inventories')->group(function () {
-        // Resumen general (debe ir antes de {id})
-        Route::get('summary', [InventoryController::class, 'summary']);
-
-        // Ajustar stock
-        Route::post('{id}/adjust', [InventoryController::class, 'adjustStock']);
+        Route::get('summary', [InventoryController::class, 'summary']); // Resumen general
+        Route::post('{id}/adjust', [InventoryController::class, 'adjustStock']); // Ajuste de stock
     });
     Route::apiResource('inventories', InventoryController::class);
     Route::apiResource('inventory-details', InventoryDetailController::class);
@@ -135,7 +132,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('exit-details', ExitDetailController::class);
 
     // ======================
-    // 🛍️ Órdenes y Dependencias
+    // 🛍️ Órdenes de Compra
     // ======================
     Route::apiResource('orders', OrderController::class);
     Route::apiResource('dep-buys', DepBuyController::class);
