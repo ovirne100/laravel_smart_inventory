@@ -74,6 +74,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/filter-options', [AlertController::class, 'filterOptions']);
         Route::post('/check-all', [AlertController::class, 'checkAll']);
         Route::patch('/{id}/resolve', [AlertController::class, 'resolve']);
+        Route::put('/{id}/status', [AlertController::class, 'updateStatus']); // Nueva ruta para actualizar estado
         Route::post('/{id}/create-order', [AlertController::class, 'createOrder']);
     });
 
@@ -97,9 +98,10 @@ Route::middleware('auth:sanctum')->group(function () {
     // 🧾 Categorías
     // ======================
     Route::prefix('categories')->group(function () {
+        Route::get('/', [CategoryController::class, 'index']);
+        Route::post('/', [CategoryController::class, 'store']); // Crear categoría individual
         Route::post('init', [CategoryController::class, 'init']);
         Route::post('sync', [CategoryController::class, 'sync']);
-        Route::get('/', [CategoryController::class, 'index']);
         Route::get('{id}', [CategoryController::class, 'show']);
     });
 
@@ -133,6 +135,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // 📥 Entradas
     // ======================
     Route::prefix('entries')->group(function () {
+        Route::get('lots-summary', [EntryController::class, 'lotsSummary'])->name('entries.lots-summary');
         Route::get('summary', [EntryController::class, 'summary']);
         Route::get('form-data', [EntryController::class, 'formData']);
     });

@@ -183,6 +183,30 @@ class SupplierController extends Controller
             'products.*.batch' => 'nullable|string|max:50',
         ]);
 
+        // Validar límite de 50 productos por proveedor
+        $MAX_PRODUCTOS = 50;
+        $productosActuales = $supplier->products()->count();
+        $productosNuevos = count($data['products']);
+        
+        // Filtrar productos que ya están asociados
+        $productosIds = collect($data['products'])->pluck('product_id')->unique();
+        $productosYaAsociados = $supplier->products()
+            ->whereIn('products.id', $productosIds)
+            ->count();
+        
+        $productosRealmenteNuevos = $productosNuevos - $productosYaAsociados;
+        $totalDespues = $productosActuales + $productosRealmenteNuevos;
+
+        if ($totalDespues > $MAX_PRODUCTOS) {
+            $disponibles = $MAX_PRODUCTOS - $productosActuales;
+            return response()->json([
+                'message' => "No se pueden asociar {$productosRealmenteNuevos} productos. Solo se pueden agregar {$disponibles} productos más (máximo {$MAX_PRODUCTOS} por proveedor).",
+                'current_count' => $productosActuales,
+                'max_allowed' => $MAX_PRODUCTOS,
+                'available_slots' => max(0, $disponibles)
+            ], 422);
+        }
+
         $attachData = [];
 
         try {

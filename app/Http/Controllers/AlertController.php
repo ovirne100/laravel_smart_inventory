@@ -49,17 +49,27 @@ class AlertController extends Controller
 
     // Obtener alertas y mapear para incluir lote y referencia
     $alerts = $this->alertService->getAlerts($validated)->map(function($alert) {
+        // Mapear el status del modelo al frontend
+        $status = match($alert->status) {
+            Alert::STATUS_ACTIVE => 'pendiente',
+            Alert::STATUS_RESOLVED => 'resuelta',
+            default => $alert->status,
+        };
+        
         return [
             'id' => $alert->id,
+            'product_id' => $alert->product_id,
+            'inventory_id' => $alert->inventory_id,
             'message' => $alert->message,
             'alert_type' => $alert->alert_type,
-            'status' => $alert->status,
+            'status' => $status, // Mapeado correctamente para el frontend
             'date' => $alert->date,
             'resolved_at' => $alert->resolved_at,
             'product' => [
                 'id' => $alert->product->id ?? null,
                 'name' => $alert->product->name ?? 'Producto desconocido',
                 'lot' => $alert->product->batch ?? null,        // ✅ usar batch
+                'batch' => $alert->product->batch ?? null,
                 'reference' => $alert->product->reference ?? null,
             ],
             'inventory' => $alert->inventory ?? null,
@@ -113,6 +123,70 @@ class AlertController extends Controller
                 'status' => 'error',
                 'message' => 'Alerta no encontrada',
             ], 404);
+        }
+    }
+
+    /**
+     * 🔄 Actualizar el estado de una alerta (pendiente o resuelta)
+     */
+    public function updateStatus(Request $request, int $id): JsonResponse
+    {
+        try {
+            $validated = $request->validate([
+                'status' => 'required|in:pendiente,resuelta',
+            ], [
+                'status.required' => 'El estado es requerido',
+                'status.in' => 'El estado debe ser: pendiente o resuelta',
+            ]);
+
+            $alert = \App\Models\Alert::findOrFail($id);
+
+            // Mapear el estado del frontend al del modelo
+            $status = match($validated['status']) {
+                'pendiente' => \App\Models\Alert::STATUS_ACTIVE,
+                'resuelta' => \App\Models\Alert::STATUS_RESOLVED,
+                default => $validated['status'],
+            };
+
+            $updateData = [
+                'status' => $status,
+            ];
+
+            // Si se marca como resuelta, agregar fecha de resolución
+            if ($status === \App\Models\Alert::STATUS_RESOLVED && !$alert->resolved_at) {
+                $updateData['resolved_at'] = now();
+            }
+
+            // Si se marca como pendiente, limpiar fecha de resolución
+            if ($status === \App\Models\Alert::STATUS_ACTIVE) {
+                $updateData['resolved_at'] = null;
+            }
+
+            $alert->update($updateData);
+            $alert->refresh();
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Estado de alerta actualizado correctamente',
+                'data' => $alert->load(['product', 'inventory']),
+            ], 200);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Error de validación',
+                'errors' => $e->errors(),
+            ], 422);
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Alerta no encontrada',
+            ], 404);
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Error al actualizar el estado de la alerta',
+                'error' => config('app.debug') ? $e->getMessage() : null,
+            ], 500);
         }
     }
 

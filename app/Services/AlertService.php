@@ -9,7 +9,7 @@ use App\Notifications\StockAlertNotification;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Iluminate\Suppor\t\Facades\Notification;
+use Illuminate\Support\Facades\Notification;
 
 class AlertService
 {
@@ -107,6 +107,7 @@ class AlertService
         }
     }
 
+
     /**
      * Resuelve automáticamente una alerta cuando el stock se normaliza
      */
@@ -117,6 +118,26 @@ class AlertService
             'message' => "El stock del producto '{$product->name}' se ha normalizado ({$currentStock} unidades).",
             'resolved_at' => now(),
         ]);
+    }
+
+    /**
+     * Resuelve alertas pendientes relacionadas con un producto cuando se realiza un ingreso físico
+     */
+    public function resolvePendingAlertsForProduct(int $productId): void
+    {
+        $pendingAlerts = Alert::where('product_id', $productId)
+            ->where('status', Alert::STATUS_ACTIVE) // STATUS_ACTIVE = 'pendiente'
+            ->get();
+
+        foreach ($pendingAlerts as $alert) {
+            $alert->update([
+                'status' => Alert::STATUS_RESOLVED,
+                'message' => $alert->message . ' (Resuelta por ingreso físico)',
+                'resolved_at' => now(),
+            ]);
+
+            Log::info("✅ Alerta pendiente ID {$alert->id} resuelta automáticamente por ingreso físico del producto {$productId}");
+        }
     }
 
     /**
