@@ -11,7 +11,8 @@ class Product extends Model
    protected $fillable = [
     'name',
     'category_id',
-    'reference',
+    'codigo_de_barras',
+    'reference', // Mantener por compatibilidad
     'unit_measurement',
     'batch',
     'expiration_date',
@@ -25,10 +26,14 @@ class Product extends Model
         'expiration_date' => 'date:Y-m-d',
     ];
 
+    /*obtener imagen en product-supplier con el dominio */
+
     public function getImageUrlAttribute()
     {
         return $this->image ? url('storage/' . $this->image) : null;
     }
+
+
 
     public function category()
     {

@@ -28,7 +28,8 @@ class ProductController extends Controller
         if ($search) {
             $query->where(function ($q) use ($search) {
                 $q->where('name', 'like', "%{$search}%")
-                  ->orWhere('reference', 'like', "%{$search}%");
+                  ->orWhere('reference', 'like', "%{$search}%")
+                  ->orWhere('codigo_de_barras', 'like', "%{$search}%");
             });
         }
 
@@ -59,42 +60,30 @@ public function store(Request $request)
     $request->validate([
         'name' => 'required|string|max:255',
         'category_id' => 'required|integer|exists:categories,id',
-        'reference' => 'nullable|string|max:255',
+        'codigo_de_barras' => 'nullable|string|max:255',
+        'reference' => 'nullable|string|max:255', // Mantener por compatibilidad
         'unit_measurement' => 'required|string|max:50',
-        'batch' => 'required|string|max:100', // 🔹 obligatorio para validar lote
-        'expiration_date' => 'nullable|date',
         'image' => 'nullable|image|mimes:jpeg,png,jpg,gif,svg|max:2048',
     ]);
 
-    // 2️⃣ Verificar si ya existe un producto con el mismo nombre y lote
-    $loteExistente = Product::where('name', $request->name)
-        ->where('batch', $request->batch)
-        ->exists();
-
-    if ($loteExistente) {
-        return response()->json([
-            'message' => '⚠️ Ya existe un producto con el mismo nombre y lote. Cada producto debe tener un lote único.',
-        ], 422);
-    }
-
-    // 3️⃣ Crear instancia del producto
+    // 2️⃣ Crear instancia del producto
     $product = new Product();
     $product->name = $request->name;
     $product->category_id = $request->category_id;
-    $product->reference = $request->reference;
+    // Priorizar codigo_de_barras, si no existe usar reference
+    $product->codigo_de_barras = $request->codigo_de_barras ?? $request->reference;
+    $product->reference = $request->reference; // Mantener por compatibilidad
     $product->unit_measurement = $request->unit_measurement;
-    $product->batch = $request->batch;
-    $product->expiration_date = $request->expiration_date;
 
-    // 4️⃣ Guardar imagen si existe
+    // 3️⃣ Guardar imagen si existe
     if ($request->hasFile('image')) {
         $product->image = $request->file('image')->store('products', 'public');
     }
 
-    // 5️⃣ Guardar en base de datos
+    // 4️⃣ Guardar en base de datos
     $product->save();
 
-    // 6️⃣ Respuesta exitosa
+    // 5️⃣ Respuesta exitosa
     return response()->json([
         'message' => '✅ Producto guardado exitosamente',
         'product' => $product
@@ -141,18 +130,27 @@ public function update(Request $request, $id)
     $validated = $request->validate([
         'name' => 'nullable|string|max:255',
         'category_id' => 'nullable|exists:categories,id',
-        'reference' => 'nullable|string|max:100',
+        'codigo_de_barras' => 'nullable|string|max:255',
+        'reference' => 'nullable|string|max:100', // Mantener por compatibilidad
         'unit_measurement' => 'nullable|string|max:50',
         'batch' => 'nullable|string|max:50',
         'expiration_date' => 'nullable|date',
         'image' => 'sometimes|image|mimes:jpeg,png,jpg,gif,svg|max:2048',
     ]);
+    
+    // Si se envía codigo_de_barras, usarlo; si no, mantener reference
+    if (isset($validated['codigo_de_barras'])) {
+        $validated['codigo_de_barras'] = $validated['codigo_de_barras'];
+    } elseif (isset($validated['reference']) && !isset($product->codigo_de_barras)) {
+        // Si no hay codigo_de_barras pero hay reference, migrar reference a codigo_de_barras
+        $validated['codigo_de_barras'] = $validated['reference'];
+    }
 
-    // 🔹 Validar lote único (manteniendo tu lógica)
-    if (!empty($validated['name']) || !empty($validated['batch'])) {
+    // 🔹 Validar lote único solo si batch está presente
+    if (isset($validated['batch']) && $validated['batch'] !== null) {
         $loteExistente = Product::where('id', '!=', $product->id)
             ->where('name', $validated['name'] ?? $product->name)
-            ->where('batch', $validated['batch'] ?? $product->batch)
+            ->where('batch', $validated['batch'])
             ->exists();
 
         if ($loteExistente) {

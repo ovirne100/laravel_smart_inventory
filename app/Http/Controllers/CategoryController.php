@@ -15,6 +15,43 @@ class CategoryController extends Controller
         ]);
     }
 
+    // Crear una nueva categoría
+    public function store(Request $request)
+    {
+        try {
+            $request->validate([
+                'name' => 'required|string|max:255|unique:categories,name'
+            ], [
+                'name.required' => 'El nombre de la categoría es obligatorio',
+                'name.unique' => 'Ya existe una categoría con ese nombre',
+                'name.max' => 'El nombre de la categoría no puede exceder 255 caracteres'
+            ]);
+
+            $category = Category::create([
+                'name' => $request->input('name')
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Categoría creada exitosamente',
+                'data' => $category
+            ], 201);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error de validación',
+                'errors' => $e->errors()
+            ], 422);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al crear la categoría',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
     // Inicializar categorías con las del frontend
     public function init(Request $request)
     {
@@ -65,6 +102,25 @@ class CategoryController extends Controller
                 'success' => false,
                 'message' => $e->getMessage()
             ], 500);
+        }
+    }
+
+    // Obtener una categoría específica
+    public function show($id)
+    {
+        try {
+            $category = Category::findOrFail($id);
+            
+            return response()->json([
+                'success' => true,
+                'data' => $category
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Categoría no encontrada',
+                'error' => $e->getMessage()
+            ], 404);
         }
     }
 }

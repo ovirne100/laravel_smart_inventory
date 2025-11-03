@@ -81,7 +81,7 @@ class OrderController extends Controller
 
             // Enviar email al proveedor si existe email
             $supplierEmail = null;
-            
+
             // Priorizar el email del request, luego el del proveedor
             if ($order->supplier_email) {
                 $supplierEmail = $order->supplier_email;
@@ -89,19 +89,26 @@ class OrderController extends Controller
                 $supplierEmail = $order->supplier->email;
             }
 
+
+            // Enviar email al proveedor si existe email
             if ($supplierEmail) {
                 try {
                     Mail::to($supplierEmail)->send(new SupplierOrderMail($order));
-                    
                     Log::info('Email enviado a: ' . $supplierEmail);
-                    
-                    $order->state = 'sent';
-                    $order->save();
+
                 } catch (\Exception $e) {
                     Log::error('Error enviando email de orden: ' . $e->getMessage());
                     // No fallar la orden si el email falla
                 }
             }
+
+
+            // Actualizar estado a 'sent' si se envió email
+            if ($supplierEmail) {
+                $order->state = 'sent';
+                $order->save();
+            }
+
 
             // Marcar alerta como resuelta si existe
             if ($order->alert) {
@@ -161,7 +168,7 @@ class OrderController extends Controller
     {
         try {
             $order = Order::findOrFail($id);
-            
+
             $validated = $request->validate([
                 'state' => 'sometimes|string',
                 'quantity' => 'sometimes|integer|min:1',
@@ -291,7 +298,7 @@ class OrderController extends Controller
     {
         try {
             $order = Order::findOrFail($id);
-            
+
             $validated = $request->validate([
                 'state' => 'required|string|in:pending,sent,completed,cancelled'
             ]);
@@ -335,7 +342,7 @@ class OrderController extends Controller
             }
 
             Mail::to($order->supplier->email)->send(new SupplierOrderMail($order));
-            
+
             Log::info('Email reenviado para orden: ' . $order->id);
 
             return response()->json([
@@ -350,4 +357,5 @@ class OrderController extends Controller
             ], 500);
         }
     }
+
 }

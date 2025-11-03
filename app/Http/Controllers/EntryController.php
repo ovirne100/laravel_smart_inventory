@@ -7,6 +7,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 use Exception;
 
 class EntryController extends Controller
@@ -20,17 +21,61 @@ class EntryController extends Controller
     }
 
     /**
-     * 📄 Listar todas las entradas
+     * 📄 Listar todas las entradas (OPTIMIZADO)
      */
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
-        $data = $this->entryService->getAllEntries();
+        $limit = $request->get('limit', null);
+        $orderBy = $request->get('order_by', 'created_at');
+        $order = $request->get('order', 'desc');
+        
+        $data = $this->entryService->getAllEntries($limit, $orderBy, $order);
 
         return response()->json([
             'status'  => 'success',
             'message' => 'Listado de entradas obtenido correctamente.',
             'data'    => $data,
         ]);
+    }
+
+    /**
+     * 📊 Resumen optimizado de lotes por producto
+     */
+    public function lotsSummary(): JsonResponse
+    {
+        try {
+            // Query optimizado: agrupar directamente en la base de datos
+            $lotsSummary = DB::table('entries')
+                ->select(
+                    'product_id',
+                    DB::raw('UPPER(TRIM(COALESCE(lot, "SIN_LOTE"))) as lot'),
+                    DB::raw('SUM(quantity) as total_quantity')
+                )
+                ->whereNotNull('product_id')
+                ->groupBy('product_id', DB::raw('UPPER(TRIM(COALESCE(lot, "SIN_LOTE")))'))
+                ->get()
+                ->map(function ($item) {
+                    return [
+                        'product_id' => $item->product_id,
+                        'lot' => $item->lot,
+                        'batch' => $item->lot,
+                        'total_quantity' => (float) $item->total_quantity,
+                        'stock' => (float) $item->total_quantity
+                    ];
+                });
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Resumen de lotes obtenido correctamente.',
+                'data' => $lotsSummary
+            ], 200);
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Error al obtener resumen de lotes.',
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
 
     /**

@@ -20,21 +20,52 @@ class EntryService
     }
 
     /**
-     * 📄 Listar todas las entradas
+     * 📄 Listar todas las entradas (OPTIMIZADO)
      */
-    public function getAllEntries()
+    public function getAllEntries($limit = null, $orderBy = 'created_at', $order = 'desc')
     {
-        $entries = Entry::with(['product.category', 'supplier'])->get();
+        $query = Entry::query();
+        
+        // Eager loading optimizado - solo cargar relaciones necesarias
+        $query->with([
+            'product:id,name,reference,category_id',
+            'product.category:id,name',
+            'supplier:id,name',
+            'user:id,name,lastname'
+        ]);
+        
+        // Aplicar límite si se especifica
+        if ($limit && is_numeric($limit) && $limit > 0) {
+            $query->limit((int) $limit);
+        }
+        
+        // Ordenar
+        if (in_array($orderBy, ['created_at', 'updated_at', 'quantity', 'product_id'])) {
+            $query->orderBy($orderBy, $order === 'asc' ? 'asc' : 'desc');
+        }
+        
+        $entries = $query->get();
 
         return $entries->map(function ($entry) {
             return [
                 'id'                => $entry->id,
+                'product_id'        => $entry->product_id,
                 'producto'          => $entry->product->name ?? 'Producto desconocido',
                 'categoria'         => $entry->product->category->name ?? 'Sin categoría',
                 'proveedor'         => $entry->supplier->name ?? 'Desconocido',
+                'supplier'          => $entry->supplier,
                 'fecha'             => $entry->created_at?->format('d/m/Y'),
+                'created_at'        => $entry->created_at?->toDateTimeString(),
                 'lote'              => $entry->lot ?? '',
+                'lot'               => $entry->lot ?? '',
+                'batch'             => $entry->lot ?? '',
                 'cantidad'          => $entry->quantity . ' ' . ($entry->unit ?? ''),
+                'quantity'          => $entry->quantity,
+                'user'              => $entry->user ? [
+                    'id' => $entry->user->id,
+                    'name' => $entry->user->name,
+                    'lastname' => $entry->user->lastname ?? '',
+                ] : null,
                 'ubicacion_interna' => $entry->ubicacion_interna,
                 'min_stock'         => $entry->min_stock,
             ];
@@ -83,8 +114,11 @@ class EntryService
                 Log::info("🆕 Nuevo inventario creado para producto ID {$entry->product_id}");
             }
 
-            // Verificar alertas automáticas
+            // Resolver alertas pendientes relacionadas con este producto
             if ($this->alertService) {
+                // Primero resolver alertas pendientes por ingreso físico
+                $this->alertService->resolvePendingAlertsForProduct($entry->product_id);
+                // Luego verificar si hay nuevas alertas o si se resolvieron automáticamente
                 $this->alertService->checkStock($inventory);
             }
 
