@@ -67,7 +67,7 @@ class AlertController extends Controller
     });
 
     return response()->json([
-        'success' => true,
+        'status' => 'success',
         'message' => 'Listado de alertas obtenido correctamente',
         'data' => $alerts,
         'total' => $alerts->count(),
@@ -84,12 +84,12 @@ class AlertController extends Controller
             $alert = Alert::with(['product', 'inventory'])->findOrFail($id);
 
             return response()->json([
-                'success' => true,
+                'status' => 'success',
                 'data' => $alert,
             ], 200);
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
             return response()->json([
-                'success' => false,
+                'status' => 'error',
                 'message' => 'Alerta no encontrada',
             ], 404);
         }
@@ -104,13 +104,13 @@ class AlertController extends Controller
             $alert = $this->alertService->resolveAlert($id);
 
             return response()->json([
-                'success' => true,
+                'status' => 'success',
                 'message' => 'Alerta resuelta correctamente',
                 'data' => $alert,
             ], 200);
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
             return response()->json([
-                'success' => false,
+                'status' => 'error',
                 'message' => 'Alerta no encontrada',
             ], 404);
         }
@@ -124,7 +124,7 @@ class AlertController extends Controller
         $stats = $this->alertService->getStats();
 
         return response()->json([
-            'success' => true,
+            'status' => 'success',
             'data' => $stats,
         ], 200);
     }
@@ -138,13 +138,13 @@ class AlertController extends Controller
             $this->alertService->checkAllInventory();
 
             return response()->json([
-                'success' => true,
+                'status' => 'success',
                 'message' => 'Inventario verificado y alertas actualizadas correctamente',
                 'stats' => $this->alertService->getStats(),
             ], 200);
         } catch (\Exception $e) {
             return response()->json([
-                'success' => false,
+                'status' => 'error',
                 'message' => 'Error al verificar el inventario',
                 'error' => $e->getMessage(),
             ], 500);
@@ -157,7 +157,7 @@ class AlertController extends Controller
     public function filterOptions(): JsonResponse
     {
         return response()->json([
-            'success' => true,
+            'status' => 'success',
             'data' => [
                 'alert_types' => [
                     [

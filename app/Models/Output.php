@@ -16,6 +16,7 @@ class Output extends Model
         'unit',
         'lot',
         'user_id',
+        'motivo',
     ];
 
     protected $casts = [

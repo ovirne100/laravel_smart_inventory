@@ -19,6 +19,7 @@ return new class extends Migration {
             $table->integer('quantity'); // Cantidad
             $table->string('unit')->nullable(); // Unidad de medida
             $table->string('lot')->nullable(); // Lote
+            $table->string('motivo')->nullable(); // Motivo de la salida
 
             // 👇 Aquí permitimos que el campo sea opcional (Auth::id() lo llenará)
             $table->foreignId('user_id')

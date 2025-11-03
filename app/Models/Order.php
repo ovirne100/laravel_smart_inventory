@@ -7,12 +7,23 @@ use Illuminate\Database\Eloquent\Builder;
 
 class Order extends Model
 {
-    protected $fillable = ['date', 'status', 'user_id', 'supplier_id','product_id'];
+    protected $fillable = [
+        'date', 
+        'state', 
+        'user_id', 
+        'supplier_id',
+        'product_id',
+        'inventory_id',
+        'alert_id',
+        'quantity',
+        'dep_buy_id',
+        'supplier_email' // Agregado para almacenar el email del proveedor
+    ];
 
     // Relaciones permitidas en includes
-    protected $allowIncluded = ['supplier', 'user', 'products'];
-    protected $allowFilter   = ['id', 'status'];
-    protected $allowSort     = ['id', 'status', 'date'];
+    protected $allowIncluded = ['supplier', 'user', 'product', 'inventory', 'alert'];
+    protected $allowFilter   = ['id', 'state', 'status'];
+    protected $allowSort     = ['id', 'state', 'date'];
 
     // Relación con proveedor
     public function supplier()
@@ -26,7 +37,25 @@ class Order extends Model
         return $this->belongsTo(User::class, 'user_id');
     }
 
-    // Relación uno a muchos con productos
+    // Relación con producto
+    public function product()
+    {
+        return $this->belongsTo(Product::class, 'product_id');
+    }
+
+    // Relación con inventario
+    public function inventory()
+    {
+        return $this->belongsTo(Inventory::class, 'inventory_id');
+    }
+
+    // Relación con alerta
+    public function alert()
+    {
+        return $this->belongsTo(Alert::class, 'alert_id');
+    }
+
+    // Relación uno a muchos con productos (legacy)
     public function products()
     {
         return $this->hasMany(Product::class, 'order_id');

@@ -33,6 +33,7 @@ return new class extends Migration
                 ->nullOnDelete()
                 ->cascadeOnUpdate();
 
+
             // 🧾 Lote
             $table->string('lot')->nullable();
 
@@ -47,6 +48,8 @@ return new class extends Migration
 
             // 🔍 Clave única: producto + lote + almacén
             $table->unique(['product_id', 'lot', 'warehouse_id'], 'unique_inventory_per_lot');
+
+            //
         });
     }
 

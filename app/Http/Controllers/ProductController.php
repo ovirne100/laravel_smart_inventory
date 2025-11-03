@@ -18,7 +18,7 @@ class ProductController extends Controller
         $perPage = (int)($request->query('perPage', 20));
         $page = (int)($request->query('page', 1));
 
-        $query = Product::with(['categoria', 'inventory', ]);
+        $query = Product::with(['categoria', 'inventory', 'suppliers', ]);
 
 
         // Si tu relación con categoría se llama "categoria", usa esa.
@@ -207,7 +207,7 @@ public function update(Request $request, $id)
             ], 409); // 409 = conflicto
         }
 
-   
+
         // 🔹 Eliminar producto
         $product->delete();
 
