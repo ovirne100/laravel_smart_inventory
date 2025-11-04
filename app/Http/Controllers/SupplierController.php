@@ -43,11 +43,10 @@ class SupplierController extends Controller
             // Mapear campos del frontend a la estructura de la BD
             $data = [
                 'name' => $validated['name'],
-                'contact_email' => $validated['email'] ?? 'temp@example.com', // Temporal para evitar error
-                'phone' => $validated['phone'] ?? '0000000000', // Temporal
-                'address' => $validated['address'] ?? 'Dirección temporal', // Temporal
-                'tax_id' => 'TEMP-' . time(), // Temporal único
-                'status' => 'Active',
+                'email' => $validated['email'] ?? null,
+                'phone' => $validated['phone'] ?? 'Sin teléfono',
+                'address' => $validated['address'] ?? 'Sin dirección',
+                'tax_id' => $validated['tax_id'] ?? 'TEMP-' . time(),
             ];
 
             $supplier = $this->service->create($data);
@@ -95,7 +94,7 @@ class SupplierController extends Controller
 
             $data = [];
             if (array_key_exists('name', $validated)) $data['name'] = $validated['name'];
-            if (array_key_exists('email', $validated)) $data['contact_email'] = $validated['email'];
+            if (array_key_exists('email', $validated)) $data['email'] = $validated['email'];
             if (array_key_exists('phone', $validated)) $data['phone'] = $validated['phone'];
             if (array_key_exists('address', $validated)) $data['address'] = $validated['address'];
             if (array_key_exists('tax_id', $validated)) $data['tax_id'] = $validated['tax_id'];
@@ -131,14 +130,75 @@ class SupplierController extends Controller
     // Extra endpoints
     public function products(Supplier $supplier)
     {
-        $supplier->load(['products' => function ($q) {
-            $q->with('categoria');
-        }]);
-        return $supplier->products;
+        try {
+            // Cargar productos con pivot (sin cargar category para evitar errores)
+            $supplier->load('products');
+            
+            // Transformar productos manualmente para evitar problemas de serialización
+            $productsArray = [];
+            
+            foreach ($supplier->products as $product) {
+                $productData = [
+                    'product_id' => $product->id,
+                    'id' => $product->id,
+                    'name' => $product->name ?? '',
+                    'reference' => $product->reference ?? null,
+                    'category_id' => $product->category_id ?? null,
+                ];
+                
+                // Agregar categoría si existe (cargar manualmente si es necesario)
+                if ($product->category_id) {
+                    try {
+                        $category = $product->category;
+                        if ($category) {
+                            $productData['categoria'] = [
+                                'id' => $category->id,
+                                'name' => $category->name ?? ''
+                            ];
+                        }
+                    } catch (\Exception $e) {
+                        // Si hay error cargando category, continuar sin ella
+                        \Log::warning('No se pudo cargar category para producto', [
+                            'product_id' => $product->id,
+                            'error' => $e->getMessage()
+                        ]);
+                    }
+                }
+                
+                // Agregar pivot si existe
+                if ($product->pivot) {
+                    $productData['pivot'] = [
+                        'unit_cost' => $product->pivot->unit_cost ?? null,
+                        'supplier_reference' => $product->pivot->supplier_reference ?? null,
+                    ];
+                }
+                
+                $productsArray[] = $productData;
+            }
+            
+            return response()->json($productsArray);
+        } catch (\Exception $e) {
+            \Log::error('Error en products() del SupplierController', [
+                'supplier_id' => $supplier->id ?? null,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
+            ]);
+            
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Error al obtener productos del proveedor',
+                'error' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
+            ], 500);
+        }
     }
 
     public function attachProducts(Request $request, Supplier $supplier)
     {
+        try {
         $data = $request->validate([
             'products' => 'required|array',
             'products.*.product_id' => 'required|integer|exists:products,id',
@@ -154,11 +214,30 @@ class SupplierController extends Controller
             ];
         }
         $supplier->products()->syncWithoutDetaching($attachData);
-        return response()->json(['message' => 'Productos asociados correctamente']);
+            
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Productos asociados correctamente'
+            ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Error de validación',
+                'errors' => $e->errors()
+            ], 422);
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Error al asociar productos',
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
 
     public function syncProducts(Request $request, Supplier $supplier)
     {
+        try {
+            // Validar que products sea un array
         $data = $request->validate([
             'products' => 'required|array',
             'products.*.product_id' => 'required|integer|exists:products,id',
@@ -173,8 +252,26 @@ class SupplierController extends Controller
                 'supplier_reference' => $p['supplier_reference'] ?? null,
             ];
         }
-        $supplier->products()->sync($syncData);
-        return response()->json(['message' => 'Products synced']);
+            
+            $supplier->products()->syncWithoutDetaching($syncData);
+            
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Productos asociados correctamente'
+            ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Error de validación',
+                'errors' => $e->errors()
+            ], 422);
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Error al asociar productos',
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
 
     public function detachProduct(Supplier $supplier, Product $product)
@@ -183,10 +280,94 @@ class SupplierController extends Controller
         return response()->noContent();
     }
 
-    public function getProducts($supplierId)
-{
-    $supplier = \App\Models\Supplier::with('products')->findOrFail($supplierId);
-    return response()->json($supplier->products);
+    public function getProducts($supplier)
+    {
+        try {
+            // Manejar tanto model binding como ID directo
+            if (is_numeric($supplier)) {
+                $supplierModel = Supplier::findOrFail($supplier);
+            } elseif ($supplier instanceof Supplier) {
+                $supplierModel = $supplier;
+            } else {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Proveedor no válido'
+                ], 400);
+            }
+            
+            // Cargar productos con pivot (sin cargar category para evitar errores)
+            $supplierModel->load('products');
+            
+            // Transformar productos manualmente para evitar problemas de serialización
+            $productsArray = [];
+            
+            foreach ($supplierModel->products as $product) {
+                $productData = [
+                    'product_id' => $product->id,
+                    'id' => $product->id,
+                    'name' => $product->name ?? '',
+                    'reference' => $product->reference ?? null,
+                    'category_id' => $product->category_id ?? null,
+                ];
+                
+                // Agregar categoría si existe (cargar manualmente si es necesario)
+                if ($product->category_id) {
+                    try {
+                        // Intentar cargar category si no está cargada
+                        if (!$product->relationLoaded('category')) {
+                            $product->load('category');
+                        }
+                        
+                        if ($product->category) {
+                            $productData['categoria'] = [
+                                'id' => $product->category->id,
+                                'name' => $product->category->name ?? ''
+                            ];
+                        }
+                    } catch (\Exception $e) {
+                        // Si hay error cargando category, continuar sin ella
+                        \Log::warning('No se pudo cargar category para producto', [
+                            'product_id' => $product->id,
+                            'error' => $e->getMessage()
+                        ]);
+                    }
+                }
+                
+                // Agregar pivot si existe
+                if ($product->pivot) {
+                    $productData['pivot'] = [
+                        'unit_cost' => $product->pivot->unit_cost ?? null,
+                        'supplier_reference' => $product->pivot->supplier_reference ?? null,
+                    ];
+                }
+                
+                $productsArray[] = $productData;
+            }
+            
+            return response()->json($productsArray);
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Proveedor no encontrado',
+                'error' => $e->getMessage()
+            ], 404);
+        } catch (\Exception $e) {
+            \Log::error('Error en getProducts() del SupplierController', [
+                'supplier' => is_numeric($supplier) ? $supplier : ($supplier instanceof Supplier ? $supplier->id : 'unknown'),
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
+            ]);
+            
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Error al obtener productos del proveedor',
+                'error' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
+            ], 500);
+        }
 }
 
 }

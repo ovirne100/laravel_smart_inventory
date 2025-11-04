@@ -20,18 +20,26 @@ class OrderService
     public function createFromAlert(array $data): Order
     {
         return DB::transaction(function () use ($data) {
-            // Validar que la alerta existe y está pendiente
-            $alert = Alert::with(['product', 'inventory'])->findOrFail($data['alert_id']);
+            // Validar que la alerta existe
+            $alert = Alert::with(['product', 'inventory'])->find($data['alert_id']);
 
-            if ($alert->status === Alert::STATUS_RESOLVED) {
-                throw new \Exception('La alerta ya ha sido resuelta.');
+            if (!$alert) {
+                throw new \Exception('La alerta no existe.');
             }
 
             // Validar que el producto existe
-            $product = Product::findOrFail($data['product_id']);
+            $product = Product::find($data['product_id']);
+
+            if (!$product) {
+                throw new \Exception('El producto no existe.');
+            }
 
             // Validar que el proveedor existe
-            $supplier = Supplier::findOrFail($data['supplier_id']);
+            $supplier = Supplier::find($data['supplier_id']);
+
+            if (!$supplier) {
+                throw new \Exception('El proveedor no existe.');
+            }
 
             if (!$supplier->email) {
                 throw new \Exception('El proveedor no tiene email configurado.');
@@ -60,11 +68,12 @@ class OrderService
                 Log::info("✅ Email de orden enviado al proveedor {$supplier->name} ({$supplier->email})");
             } catch (\Exception $e) {
                 Log::error("❌ Error al enviar email al proveedor: " . $e->getMessage());
-                throw new \Exception('Orden creada pero error al enviar email: ' . $e->getMessage());
+                // No lanzar excepción, la orden se creó exitosamente
+                // Solo registrar el error del email
             }
 
-            // Resolver automáticamente la alerta
-            $this->resolveAlertFromOrder($alert);
+            // Marcar alerta como en proceso (no resuelta completamente)
+            $this->updateAlertStatus($alert);
 
             return $order->fresh(['product', 'supplier', 'alert', 'user']);
         });
@@ -81,17 +90,24 @@ class OrderService
     }
 
     /**
-     * ✅ Resolver automáticamente la alerta después de crear la orden
+     * 🔄 Actualizar estado de la alerta después de crear la orden
      */
-    private function resolveAlertFromOrder(Alert $alert): void
+    private function updateAlertStatus(Alert $alert): void
     {
-        $alert->update([
-            'status' => Alert::STATUS_RESOLVED,
-            'message' => $alert->message . ' (Pedido realizado al proveedor)',
-            'resolved_at' => now(),
-        ]);
+        // Verificar si Alert tiene la constante STATUS_PENDING
+        $statusPending = defined('App\Models\Alert::STATUS_PENDING')
+            ? Alert::STATUS_PENDING
+            : 'pendiente';
 
-        Log::info("✅ Alerta #{$alert->id} resuelta automáticamente tras crear orden");
+        // Solo actualizar si está pendiente
+        if ($alert->status === $statusPending) {
+            $alert->update([
+                'status' => 'en_proceso', // O el estado que uses para indicar que se hizo un pedido
+                'message' => $alert->message . ' (Pedido realizado al proveedor)',
+            ]);
+
+            Log::info("🔄 Alerta #{$alert->id} marcada como en proceso tras crear orden");
+        }
     }
 
     /**
@@ -139,12 +155,14 @@ class OrderService
     {
         $order = Order::findOrFail($id);
 
-        if (!in_array($status, [
+        $validStatuses = [
             Order::STATUS_PENDING,
             Order::STATUS_SENT,
             Order::STATUS_RECEIVED,
             Order::STATUS_CANCELLED
-        ])) {
+        ];
+
+        if (!in_array($status, $validStatuses)) {
             throw new \Exception('Estado de orden inválido.');
         }
 
@@ -170,7 +188,7 @@ class OrderService
     /**
      * ❌ Cancelar una orden
      */
-    public function cancelOrder(int $id, string $reason = null): Order
+    public function cancelOrder(int $id, ?string $reason = null): Order
     {
         $order = Order::findOrFail($id);
 
@@ -181,10 +199,11 @@ class OrderService
         $order->cancel();
 
         if ($reason) {
-            $order->update(['notes' => ($order->notes ? $order->notes . ' | ' : '') . "Cancelada: {$reason}"]);
+            $notes = $order->notes ? $order->notes . ' | ' : '';
+            $order->update(['notes' => $notes . "Cancelada: {$reason}"]);
         }
 
-        Log::info("❌ Orden #{$order->id} cancelada. Razón: {$reason}");
+        Log::info("❌ Orden #{$order->id} cancelada. Razón: " . ($reason ?? 'Sin razón especificada'));
 
         return $order->fresh(['product', 'supplier', 'alert', 'user']);
     }

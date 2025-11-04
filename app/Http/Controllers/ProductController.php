@@ -4,148 +4,183 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use App\Services\OutputService;
+use App\Services\ProductService;
 
-class OutputController extends Controller
+class ProductController extends Controller
 {
-    protected OutputService $service;
+    protected ProductService $service;
 
-    public function __construct(OutputService $service)
+    public function __construct(ProductService $service)
     {
         $this->service = $service;
     }
 
     /**
-     * 📄 Listar todas las salidas
+     * 📄 Listar todos los productos
      */
-    public function index()
+    public function index(Request $request)
     {
-        $data = $this->service->listAll();
+        $data = $this->service->list($request->all());
 
         return response()->json([
             'status'  => 'success',
-            'message' => 'Listado de salidas',
+            'message' => 'Listado de productos',
             'data'    => $data,
         ]);
     }
 
     /**
-     * ➕ Crear nueva salida
+     * ➕ Crear nuevo producto
      */
     public function store(Request $request)
     {
-        $validated = $request->validate([
-            'product_id'   => 'required|exists:products,id',
-            'inventory_id' => 'nullable|exists:inventories,id',
-            'quantity'     => 'required|numeric|min:1',
-            'unit'         => 'nullable|string|max:20',
-            'lot'          => 'nullable|string|max:50',
-        ]);
+        $rules = [
+            'name' => 'required|string|max:100',
+            'category_id' => 'required|exists:categories,id',
+            'reference' => 'nullable|string|max:50',
+            'unit_measurement' => 'nullable|string|max:20',
+            'batch' => 'required|string|max:50',
+            'expiration_date' => 'nullable|date',
+        ];
 
-        $validated['user_id'] = Auth::id();
+        // Solo validar imagen si se envía
+        if ($request->hasFile('image')) {
+            $rules['image'] = 'required|image|mimes:jpeg,png,jpg,gif|max:2048';
+        }
+
+        $validated = $request->validate($rules);
+
+        // Procesar la imagen si existe
+        if ($request->hasFile('image')) {
+            $image = $request->file('image');
+            $imageName = time() . '_' . $image->getClientOriginalName();
+            $image->move(public_path('uploads/products'), $imageName);
+            $validated['image'] = 'uploads/products/' . $imageName;
+        }
 
         $result = $this->service->create($validated);
 
         return response()->json([
-            'status'  => $result['error'] ? 'error' : 'success',
-            'message' => $result['message'],
-            'data'    => $result['data'] ?? null,
-        ], $result['error'] ? 400 : 201);
+            'status'  => 'success',
+            'message' => 'Producto creado exitosamente',
+            'producto' => $result,
+        ], 201);
     }
 
     /**
-     * 🔍 Mostrar detalles de una salida
+     * 🔍 Mostrar detalles de un producto
      */
     public function show($id)
     {
-        if (!is_numeric($id)) {
+        $product = \App\Models\Product::with(['categoria', 'inventory', 'suppliers'])
+            ->find($id);
+
+        if (!$product) {
             return response()->json([
                 'status'  => 'error',
-                'message' => 'El identificador de salida no es válido.',
-            ], 400);
+                'message' => 'Producto no encontrado',
+            ], 404);
         }
 
-        $data = $this->service->find((int) $id);
-
         return response()->json([
-            'status'  => $data['error'] ? 'error' : 'success',
-            'message' => $data['message'] ?? 'Detalles de la salida',
-            'data'    => $data['data'] ?? null,
-        ], $data['error'] ? 404 : 200);
+            'status'  => 'success',
+            'message' => 'Detalles del producto',
+            'data'    => $product,
+        ]);
     }
 
     /**
-     * ✏️ Actualizar salida
+     * ✏️ Actualizar producto
      */
     public function update(Request $request, $id)
     {
-        if (!is_numeric($id)) {
-            return response()->json([
-                'status'  => 'error',
-                'message' => 'El identificador de salida no es válido.',
-            ], 400);
+        $rules = [
+            'name' => 'sometimes|string|max:100',
+            'category_id' => 'sometimes|exists:categories,id',
+            'reference' => 'sometimes|string|max:50',
+            'unit_measurement' => 'sometimes|string|max:20',
+            'batch' => 'sometimes|string|max:50',
+            'expiration_date' => 'sometimes|date',
+        ];
+
+        // Solo validar imagen si se envía
+        if ($request->hasFile('image')) {
+            $rules['image'] = 'required|image|mimes:jpeg,png,jpg,gif|max:2048';
         }
 
-        $validated = $request->validate([
-            'product_id'   => 'sometimes|exists:products,id',
-            'inventory_id' => 'sometimes|exists:inventories,id',
-            'quantity'     => 'sometimes|numeric|min:1',
-            'unit'         => 'sometimes|string|max:20',
-            'lot'          => 'sometimes|string|max:50',
-        ]);
+        $validated = $request->validate($rules);
 
-        $validated['user_id'] = Auth::id();
+        $product = \App\Models\Product::find($id);
 
-        $result = $this->service->update((int) $id, $validated);
+        if (!$product) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Producto no encontrado',
+            ], 404);
+        }
+
+        // Procesar la imagen si existe
+        if ($request->hasFile('image')) {
+            // Eliminar imagen anterior si existe
+            if ($product->image && file_exists(public_path($product->image))) {
+                unlink(public_path($product->image));
+            }
+            
+            $image = $request->file('image');
+            $imageName = time() . '_' . $image->getClientOriginalName();
+            $image->move(public_path('uploads/products'), $imageName);
+            $validated['image'] = 'uploads/products/' . $imageName;
+        }
+
+        $result = $this->service->update($product, $validated);
 
         return response()->json([
-            'status'  => $result['error'] ? 'error' : 'success',
-            'message' => $result['message'],
-            'data'    => $result['data'] ?? null,
-        ], $result['error'] ? 400 : 200);
+            'status'  => 'success',
+            'message' => 'Producto actualizado exitosamente',
+            'data'    => $result,
+        ]);
     }
 
     /**
-     * ❌ Eliminar salida
+     * ❌ Eliminar producto
      */
     public function destroy($id)
     {
-        if (!is_numeric($id)) {
+        $product = \App\Models\Product::find($id);
+
+        if (!$product) {
             return response()->json([
                 'status'  => 'error',
-                'message' => 'El identificador de salida no es válido.',
-            ], 400);
+                'message' => 'Producto no encontrado',
+            ], 404);
         }
 
-        $result = $this->service->delete((int) $id);
+        $this->service->delete($product);
 
-        return response()->json([
-            'status'  => $result['error'] ? 'error' : 'success',
-            'message' => $result['message'],
-        ], $result['error'] ? 400 : 200);
-    }
-
-    /**
-     * 📊 Resumen de salidas
-     */
-    public function summary()
-    {
         return response()->json([
             'status'  => 'success',
-            'message' => 'Resumen de salidas',
-            'data'    => $this->service->summary(),
+            'message' => 'Producto eliminado exitosamente',
         ]);
     }
 
     /**
-     * ⚙️ Datos para formularios
+     * 🔗 Obtener proveedores de un producto
      */
-    public function formData()
+    public function getSuppliers($productId)
     {
+        $product = \App\Models\Product::with('suppliers')->find($productId);
+
+        if (!$product) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Producto no encontrado',
+            ], 404);
+        }
+
         return response()->json([
             'status'  => 'success',
-            'message' => 'Datos de formulario',
-            'data'    => $this->service->formData(),
+            'message' => 'Proveedores del producto',
+            'data'    => $product->suppliers,
         ]);
     }
 }

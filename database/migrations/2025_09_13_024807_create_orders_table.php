@@ -11,6 +11,11 @@ return new class extends Migration
      */
     public function up(): void
     {
+        // Si la tabla ya existe (de la migración antigua), la eliminamos primero
+        if (Schema::hasTable('orders')) {
+            Schema::dropIfExists('orders');
+        }
+
         Schema::create('orders', function (Blueprint $table) {
             $table->id();
             $table->foreignId('alert_id')->constrained('alerts')->onDelete('cascade');

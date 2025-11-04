@@ -28,6 +28,8 @@ class Alert extends Model
         'updated_at' => 'datetime',
     ];
 
+    protected $appends = ['status_label', 'type_label'];
+
     /* ----------------- CONSTANTES ----------------- */
 
     // Tipos de alerta
@@ -35,8 +37,10 @@ class Alert extends Model
     const TYPE_OUT_OF_STOCK = 'sin_stock';
 
     // Estados
-    const STATUS_ACTIVE = 'pendiente';
+    const STATUS_PENDING = 'pendiente';      // ⬅️ AGREGADO para compatibilidad
+    const STATUS_ACTIVE = 'pendiente';       // ⬅️ Mantenido por compatibilidad
     const STATUS_RESOLVED = 'resuelta';
+    const STATUS_IN_PROCESS = 'en_proceso';  // ⬅️ AGREGADO para órdenes
 
     /* ----------------- RELACIONES ----------------- */
 
@@ -67,11 +71,19 @@ class Alert extends Model
     /* ----------------- SCOPES ----------------- */
 
     /**
-     * Scope para alertas activas
+     * Scope para alertas activas/pendientes
      */
     public function scopeActive($query)
     {
         return $query->where('status', self::STATUS_ACTIVE);
+    }
+
+    /**
+     * Scope para alertas pendientes (alias de active)
+     */
+    public function scopePending($query)
+    {
+        return $query->where('status', self::STATUS_PENDING);
     }
 
     /**
@@ -80,6 +92,14 @@ class Alert extends Model
     public function scopeResolved($query)
     {
         return $query->where('status', self::STATUS_RESOLVED);
+    }
+
+    /**
+     * Scope para alertas en proceso
+     */
+    public function scopeInProcess($query)
+    {
+        return $query->where('status', self::STATUS_IN_PROCESS);
     }
 
     /**
@@ -101,11 +121,19 @@ class Alert extends Model
     /* ----------------- HELPERS ----------------- */
 
     /**
-     * Verifica si la alerta está activa
+     * Verifica si la alerta está activa/pendiente
      */
     public function isActive(): bool
     {
         return $this->status === self::STATUS_ACTIVE;
+    }
+
+    /**
+     * Verifica si la alerta está pendiente (alias de isActive)
+     */
+    public function isPending(): bool
+    {
+        return $this->status === self::STATUS_PENDING;
     }
 
     /**
@@ -117,11 +145,47 @@ class Alert extends Model
     }
 
     /**
+     * Verifica si la alerta está en proceso
+     */
+    public function isInProcess(): bool
+    {
+        return $this->status === self::STATUS_IN_PROCESS;
+    }
+
+    /**
      * 📦 Verificar si tiene órdenes asociadas
      */
     public function hasOrders(): bool
     {
         return $this->orders()->exists();
+    }
+
+    /**
+     * 🔄 Marcar alerta como en proceso
+     */
+    public function markAsInProcess(): bool
+    {
+        return $this->update([
+            'status' => self::STATUS_IN_PROCESS,
+        ]);
+    }
+
+    /**
+     * ✅ Marcar alerta como resuelta
+     */
+    public function markAsResolved(?string $additionalMessage = null): bool
+    {
+        $message = $this->message;
+
+        if ($additionalMessage) {
+            $message .= ' ' . $additionalMessage;
+        }
+
+        return $this->update([
+            'status' => self::STATUS_RESOLVED,
+            'message' => $message,
+            'resolved_at' => now(),
+        ]);
     }
 
     /* ----------------- ACCESSORS ----------------- */
@@ -132,8 +196,9 @@ class Alert extends Model
     public function getStatusLabelAttribute(): string
     {
         return match ($this->status) {
-            self::STATUS_ACTIVE => 'Pendiente',
+            self::STATUS_ACTIVE, self::STATUS_PENDING => 'Pendiente',
             self::STATUS_RESOLVED => 'Resuelta',
+            self::STATUS_IN_PROCESS => 'En Proceso',
             default => 'Desconocido',
         };
     }

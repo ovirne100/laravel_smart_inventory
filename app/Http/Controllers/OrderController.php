@@ -70,15 +70,19 @@ class OrderController extends Controller
      */
     public function createFromAlert(Request $request)
     {
+        Log::info('📥 Recibiendo solicitud para crear orden desde alerta', $request->all());
+
         $validator = Validator::make($request->all(), [
             'alert_id' => 'required|integer|exists:alerts,id',
             'product_id' => 'required|integer|exists:products,id',
             'supplier_id' => 'required|integer|exists:suppliers,id',
-            'quantity' => 'required|integer|min:1',
+            'quantity' => 'required|numeric|min:1',
             'notes' => 'nullable|string|max:1000',
         ]);
 
         if ($validator->fails()) {
+            Log::warning('❌ Validación fallida', $validator->errors()->toArray());
+
             return response()->json([
                 'status' => 'error',
                 'message' => 'Errores de validación.',
@@ -89,13 +93,16 @@ class OrderController extends Controller
         try {
             $order = $this->orderService->createFromAlert($request->all());
 
+            Log::info("✅ Orden #{$order->id} creada exitosamente");
+
             return response()->json([
                 'status' => 'success',
-                'message' => '✅ Orden creada y correo enviado al proveedor exitosamente.',
+                'message' => '✅ Orden creada exitosamente. Se ha enviado un correo al proveedor.',
                 'data' => $order
             ], 201);
         } catch (\Exception $e) {
-            Log::error('Error al crear orden desde alerta: ' . $e->getMessage());
+            Log::error('❌ Error al crear orden desde alerta: ' . $e->getMessage());
+            Log::error('Stack trace: ' . $e->getTraceAsString());
 
             return response()->json([
                 'status' => 'error',

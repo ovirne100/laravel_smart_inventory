@@ -3,7 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Models\Alert;
+use App\Models\Product;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class AlertController extends Controller
 {
@@ -37,25 +39,184 @@ class AlertController extends Controller
 
             // 🔹 Transformar respuesta para asegurar que supplier esté disponible
             $alerts = $alerts->map(function($alert) {
-                // Obtener el primer proveedor disponible
+                // Obtener proveedor disponible
                 $supplier = null;
+                $suppliersArray = [];
 
-                if ($alert->product && $alert->product->suppliers->isNotEmpty()) {
-                    $supplier = $alert->product->suppliers->first();
-                } elseif ($alert->inventory && $alert->inventory->product && $alert->inventory->product->suppliers->isNotEmpty()) {
-                    $supplier = $alert->inventory->product->suppliers->first();
+                // Obtener product_id para consultar suppliers
+                $productId = $alert->product_id;
+                if ($alert->product) {
+                    $productId = $alert->product->id;
+                } elseif ($alert->inventory && $alert->inventory->product) {
+                    $productId = $alert->inventory->product->id;
+                }
+                
+                // Intentar obtener suppliers directamente desde la base de datos
+                if ($productId) {
+                    try {
+                        // Consulta directa a la tabla pivot y suppliers
+                        $suppliersFromDB = DB::table('product_supplier')
+                            ->join('suppliers', 'product_supplier.supplier_id', '=', 'suppliers.id')
+                            ->where('product_supplier.product_id', $productId)
+                            ->select('suppliers.id', 'suppliers.name', 'suppliers.email', 'suppliers.phone', 'suppliers.address', 'suppliers.tax_id')
+                            ->get();
+                        
+                        if ($suppliersFromDB->isNotEmpty()) {
+                            $supplier = $suppliersFromDB->first();
+                            $suppliersArray = $suppliersFromDB->map(function($s) {
+                                return [
+                                    'id' => $s->id,
+                                    'name' => $s->name,
+                                    'email' => $s->email ?? null,
+                                    'phone' => $s->phone ?? null,
+                                    'address' => $s->address ?? null,
+                                    'tax_id' => $s->tax_id ?? null,
+                                ];
+                            })->toArray();
+                        } else {
+                            // Si no hay suppliers en la tabla pivot, intentar con la relación Eloquent
+                            if ($alert->product) {
+                                if (!$alert->product->relationLoaded('suppliers')) {
+                                    $alert->product->load('suppliers');
+                                }
+                                $suppliersCollection = $alert->product->suppliers;
+                                if ($suppliersCollection && $suppliersCollection->isNotEmpty()) {
+                                    $supplier = $suppliersCollection->first();
+                                    $suppliersArray = $suppliersCollection->map(function($s) {
+                                        return [
+                                            'id' => $s->id,
+                                            'name' => $s->name,
+                                            'email' => $s->email ?? null,
+                                            'phone' => $s->phone ?? null,
+                                            'address' => $s->address ?? null,
+                                            'tax_id' => $s->tax_id ?? null,
+                                        ];
+                                    })->toArray();
+                                }
+                            }
+                            
+                            // Si aún no hay supplier, intentar desde inventory.product
+                            if (!$supplier && $alert->inventory && $alert->inventory->product) {
+                                if (!$alert->inventory->product->relationLoaded('suppliers')) {
+                                    $alert->inventory->product->load('suppliers');
+                                }
+                                $suppliersCollection = $alert->inventory->product->suppliers;
+                                if ($suppliersCollection && $suppliersCollection->isNotEmpty()) {
+                                    $supplier = $suppliersCollection->first();
+                                    $suppliersArray = $suppliersCollection->map(function($s) {
+                                        return [
+                                            'id' => $s->id,
+                                            'name' => $s->name,
+                                            'email' => $s->email ?? null,
+                                            'phone' => $s->phone ?? null,
+                                            'address' => $s->address ?? null,
+                                            'tax_id' => $s->tax_id ?? null,
+                                        ];
+                                    })->toArray();
+                                }
+                            }
+                        }
+                    } catch (\Exception $e) {
+                        // En caso de error, intentar con la relación Eloquent
+                        if ($alert->product) {
+                            if (!$alert->product->relationLoaded('suppliers')) {
+                                $alert->product->load('suppliers');
+                }
+                            $suppliersCollection = $alert->product->suppliers;
+                            if ($suppliersCollection && $suppliersCollection->isNotEmpty()) {
+                                $supplier = $suppliersCollection->first();
+                                $suppliersArray = $suppliersCollection->map(function($s) {
+                                    return [
+                                        'id' => $s->id,
+                                        'name' => $s->name,
+                                        'email' => $s->email ?? null,
+                                        'phone' => $s->phone ?? null,
+                                        'address' => $s->address ?? null,
+                                        'tax_id' => $s->tax_id ?? null,
+                                    ];
+                                })->toArray();
+                            }
+                        }
+                    }
                 }
 
-                // Añadir supplier directamente al producto para facilitar acceso en frontend
-                if ($alert->product && $supplier) {
-                    $alert->product->supplier = $supplier;
+                // Construir respuesta manualmente para garantizar estructura
+                $alertData = [
+                    'id' => $alert->id,
+                    'product_id' => $alert->product_id,
+                    'inventory_id' => $alert->inventory_id,
+                    'alert_type' => $alert->alert_type,
+                    'status' => $alert->status,
+                    'message' => $alert->message,
+                    'date' => $alert->date?->toDateTimeString() ?? $alert->date,
+                    'resolved_at' => $alert->resolved_at?->toDateTimeString() ?? $alert->resolved_at,
+                    'created_at' => $alert->created_at?->toDateTimeString() ?? $alert->created_at,
+                    'updated_at' => $alert->updated_at?->toDateTimeString() ?? $alert->updated_at,
+                ];
+
+                // Agregar product con suppliers
+                if ($alert->product) {
+                    $alertData['product'] = [
+                        'id' => $alert->product->id,
+                        'name' => $alert->product->name,
+                        'reference' => $alert->product->reference,
+                        'category_id' => $alert->product->category_id,
+                        'suppliers' => $suppliersArray,
+                    ];
+                    
+                    // Agregar supplier como objeto único
+                    if ($supplier) {
+                        $alertData['product']['supplier'] = [
+                            'id' => $supplier->id,
+                            'name' => $supplier->name,
+                            'email' => $supplier->email,
+                            'phone' => $supplier->phone,
+                            'address' => $supplier->address,
+                            'tax_id' => $supplier->tax_id,
+                        ];
+                }
                 }
 
-                if ($alert->inventory && $alert->inventory->product && $supplier) {
-                    $alert->inventory->product->supplier = $supplier;
+                // Agregar inventory con product y suppliers
+                if ($alert->inventory) {
+                    $inventoryData = [
+                        'id' => $alert->inventory->id ?? null,
+                        'lot' => $alert->inventory->lot,
+                        'lot_number' => $alert->inventory->lot_number ?? $alert->inventory->lot,
+                        'stock' => $alert->inventory->stock,
+                        'min_stock' => $alert->inventory->min_stock,
+                        'product_id' => $alert->inventory->product_id,
+                        'warehouse_id' => $alert->inventory->warehouse_id,
+                        'ubicacion_interna' => $alert->inventory->ubicacion_interna,
+                    ];
+
+                    // Agregar product dentro de inventory
+                    if ($alert->inventory->product) {
+                        $inventoryData['product'] = [
+                            'id' => $alert->inventory->product->id,
+                            'name' => $alert->inventory->product->name,
+                            'reference' => $alert->inventory->product->reference,
+                            'category_id' => $alert->inventory->product->category_id,
+                            'suppliers' => $suppliersArray,
+                        ];
+                        
+                        // Agregar supplier como objeto único
+                        if ($supplier) {
+                            $inventoryData['product']['supplier'] = [
+                                'id' => $supplier->id,
+                                'name' => $supplier->name,
+                                'email' => $supplier->email,
+                                'phone' => $supplier->phone,
+                                'address' => $supplier->address,
+                                'tax_id' => $supplier->tax_id,
+                            ];
+                }
+                    }
+
+                    $alertData['inventory'] = $inventoryData;
                 }
 
-                return $alert;
+                return $alertData;
             });
 
             return response()->json([
@@ -89,20 +250,187 @@ class AlertController extends Controller
                 }
             ])->findOrFail($id);
 
-            // Añadir supplier como objeto único
+            // Obtener proveedor disponible
             $supplier = null;
-            if ($alert->product && $alert->product->suppliers->isNotEmpty()) {
-                $supplier = $alert->product->suppliers->first();
-                $alert->product->supplier = $supplier;
-            } elseif ($alert->inventory && $alert->inventory->product && $alert->inventory->product->suppliers->isNotEmpty()) {
-                $supplier = $alert->inventory->product->suppliers->first();
-                $alert->inventory->product->supplier = $supplier;
+            $suppliersArray = [];
+
+            // Obtener product_id para consultar suppliers
+            $productId = $alert->product_id;
+            if ($alert->product) {
+                $productId = $alert->product->id;
+            } elseif ($alert->inventory && $alert->inventory->product) {
+                $productId = $alert->inventory->product->id;
+            }
+            
+            // Intentar obtener suppliers directamente desde la base de datos
+            if ($productId) {
+                try {
+                    // Consulta directa a la tabla pivot y suppliers
+                    $suppliersFromDB = DB::table('product_supplier')
+                        ->join('suppliers', 'product_supplier.supplier_id', '=', 'suppliers.id')
+                        ->where('product_supplier.product_id', $productId)
+                        ->select('suppliers.id', 'suppliers.name', 'suppliers.email', 'suppliers.phone', 'suppliers.address', 'suppliers.tax_id')
+                        ->get();
+                    
+                    if ($suppliersFromDB->isNotEmpty()) {
+                        $supplier = $suppliersFromDB->first();
+                        $suppliersArray = $suppliersFromDB->map(function($s) {
+                            return [
+                                'id' => $s->id,
+                                'name' => $s->name,
+                                'email' => $s->email ?? null,
+                                'phone' => $s->phone ?? null,
+                                'address' => $s->address ?? null,
+                                'tax_id' => $s->tax_id ?? null,
+                            ];
+                        })->toArray();
+                    } else {
+                        // Si no hay suppliers en la tabla pivot, intentar con la relación Eloquent
+                        if ($alert->product) {
+                            if (!$alert->product->relationLoaded('suppliers')) {
+                                $alert->product->load('suppliers');
+                            }
+                            $suppliersCollection = $alert->product->suppliers;
+                            if ($suppliersCollection && $suppliersCollection->isNotEmpty()) {
+                                $supplier = $suppliersCollection->first();
+                                $suppliersArray = $suppliersCollection->map(function($s) {
+                                    return [
+                                        'id' => $s->id,
+                                        'name' => $s->name,
+                                        'email' => $s->email ?? null,
+                                        'phone' => $s->phone ?? null,
+                                        'address' => $s->address ?? null,
+                                        'tax_id' => $s->tax_id ?? null,
+                                    ];
+                                })->toArray();
+                            }
+                        }
+                        
+                        // Si aún no hay supplier, intentar desde inventory.product
+                        if (!$supplier && $alert->inventory && $alert->inventory->product) {
+                            if (!$alert->inventory->product->relationLoaded('suppliers')) {
+                                $alert->inventory->product->load('suppliers');
+                            }
+                            $suppliersCollection = $alert->inventory->product->suppliers;
+                            if ($suppliersCollection && $suppliersCollection->isNotEmpty()) {
+                                $supplier = $suppliersCollection->first();
+                                $suppliersArray = $suppliersCollection->map(function($s) {
+                                    return [
+                                        'id' => $s->id,
+                                        'name' => $s->name,
+                                        'email' => $s->email ?? null,
+                                        'phone' => $s->phone ?? null,
+                                        'address' => $s->address ?? null,
+                                        'tax_id' => $s->tax_id ?? null,
+                                    ];
+                                })->toArray();
+                            }
+                        }
+                    }
+                } catch (\Exception $e) {
+                    // En caso de error, intentar con la relación Eloquent
+                    if ($alert->product) {
+                        if (!$alert->product->relationLoaded('suppliers')) {
+                            $alert->product->load('suppliers');
+                        }
+                        $suppliersCollection = $alert->product->suppliers;
+                        if ($suppliersCollection && $suppliersCollection->isNotEmpty()) {
+                            $supplier = $suppliersCollection->first();
+                            $suppliersArray = $suppliersCollection->map(function($s) {
+                                return [
+                                    'id' => $s->id,
+                                    'name' => $s->name,
+                                    'email' => $s->email ?? null,
+                                    'phone' => $s->phone ?? null,
+                                    'address' => $s->address ?? null,
+                                    'tax_id' => $s->tax_id ?? null,
+                                ];
+                            })->toArray();
+                        }
+                    }
+                }
+            }
+
+            // Construir respuesta manualmente para garantizar estructura
+            $alertData = [
+                'id' => $alert->id,
+                'product_id' => $alert->product_id,
+                'inventory_id' => $alert->inventory_id,
+                'alert_type' => $alert->alert_type,
+                'status' => $alert->status,
+                'message' => $alert->message,
+                'date' => $alert->date?->toDateTimeString() ?? $alert->date,
+                'resolved_at' => $alert->resolved_at?->toDateTimeString() ?? $alert->resolved_at,
+                'created_at' => $alert->created_at?->toDateTimeString() ?? $alert->created_at,
+                'updated_at' => $alert->updated_at?->toDateTimeString() ?? $alert->updated_at,
+            ];
+
+            // Agregar product con suppliers
+            if ($alert->product) {
+                $alertData['product'] = [
+                    'id' => $alert->product->id,
+                    'name' => $alert->product->name,
+                    'reference' => $alert->product->reference,
+                    'category_id' => $alert->product->category_id,
+                    'suppliers' => $suppliersArray,
+                ];
+                
+                // Agregar supplier como objeto único
+                if ($supplier) {
+                    $alertData['product']['supplier'] = [
+                        'id' => $supplier->id,
+                        'name' => $supplier->name,
+                        'email' => $supplier->email,
+                        'phone' => $supplier->phone,
+                        'address' => $supplier->address,
+                        'tax_id' => $supplier->tax_id,
+                    ];
+                }
+            }
+
+            // Agregar inventory con product y suppliers
+            if ($alert->inventory) {
+                $inventoryData = [
+                    'id' => $alert->inventory->id ?? null,
+                    'lot' => $alert->inventory->lot,
+                    'lot_number' => $alert->inventory->lot_number ?? $alert->inventory->lot,
+                    'stock' => $alert->inventory->stock,
+                    'min_stock' => $alert->inventory->min_stock,
+                    'product_id' => $alert->inventory->product_id,
+                    'warehouse_id' => $alert->inventory->warehouse_id,
+                    'ubicacion_interna' => $alert->inventory->ubicacion_interna,
+                ];
+
+                // Agregar product dentro de inventory
+                if ($alert->inventory->product) {
+                    $inventoryData['product'] = [
+                        'id' => $alert->inventory->product->id,
+                        'name' => $alert->inventory->product->name,
+                        'reference' => $alert->inventory->product->reference,
+                        'category_id' => $alert->inventory->product->category_id,
+                        'suppliers' => $suppliersArray,
+                    ];
+                    
+                    // Agregar supplier como objeto único
+                    if ($supplier) {
+                        $inventoryData['product']['supplier'] = [
+                            'id' => $supplier->id,
+                            'name' => $supplier->name,
+                            'email' => $supplier->email,
+                            'phone' => $supplier->phone,
+                            'address' => $supplier->address,
+                            'tax_id' => $supplier->tax_id,
+                        ];
+                    }
+                }
+
+                $alertData['inventory'] = $inventoryData;
             }
 
             return response()->json([
                 'status' => 'success',
                 'message' => 'Alerta encontrada correctamente.',
-                'data' => $alert
+                'data' => $alertData
             ]);
         } catch (\Exception $e) {
             return response()->json([

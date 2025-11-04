@@ -201,7 +201,6 @@ class EntryService
     */
 
 
-
 namespace App\Services;
 
 use App\Models\Entry;
@@ -212,6 +211,7 @@ use App\Models\Location;
 use App\Models\Warehouse;
 use App\Services\AlertService;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class EntryService
 {
@@ -241,6 +241,31 @@ class EntryService
                 'warehouse' => $entry->warehouse->name ?? 'Sin almacén',
                 'min_stock' => $entry->min_stock,
             ]);
+    }
+
+    // Método para obtener lotes de un producto específico
+    public function getLotsByProduct(int $productId): array
+    {
+        $lots = Entry::where('product_id', $productId)
+            ->whereNotNull('lot')
+            ->where('lot', '!=', '')
+            ->distinct()
+            ->pluck('lot')
+            ->toArray();
+
+        return $lots;
+    }
+
+    // Método para validar si un lote existe para un producto
+    public function validateLotForProduct(int $productId, ?string $lot): bool
+    {
+        if (empty($lot)) {
+            return true; // Si no hay lote, no validamos
+        }
+
+        return Entry::where('product_id', $productId)
+            ->where('lot', $lot)
+            ->exists();
     }
 
     public function createEntryWithInventoryAndUser(array $data, int $userId)
@@ -356,30 +381,59 @@ class EntryService
     // Datos optimizados para formularios
     public function formData(): array
     {
-        $locations = Location::with('warehouse')->get()->map(function ($loc) {
-            $warehouseName = $loc->warehouse ? $loc->warehouse->name : 'Sin almacén';
-            return [
-                'id' => $loc->id,
-                'display_name' => "{$warehouseName} - {$loc->aisle}-{$loc->row}",
-            ];
-        });
+        try {
+            Log::info('Iniciando formData()');
 
-        $products = Product::select('id','name')->get()->map(fn($p) => [
-            'id' => $p->id,
-            'name' => $p->name,
-        ]);
+            // Locations con warehouse_id incluido
+            $locations = Location::with('warehouse')->get()->map(function ($loc) {
+                return [
+                    'id' => $loc->id,
+                    'warehouse_id' => $loc->warehouse_id ?? null,
+                    'aisle' => $loc->aisle ?? '',
+                    'row' => $loc->row ?? '',
+                    'display_name' => ($loc->warehouse ? $loc->warehouse->name : 'Sin almacén')
+                        . ' - ' . ($loc->aisle ?? 'S/N') . '-' . ($loc->row ?? 'S/N'),
+                ];
+            });
+            Log::info('Locations cargadas: ' . $locations->count());
 
-        $suppliers = Supplier::select('id','name')->get()->map(fn($s) => [
-            'id' => $s->id,
-            'name' => $s->name,
-        ]);
+            // Products con solo id y name
+            $products = Product::select('id', 'name')
+                ->orderBy('name')
+                ->get()
+                ->map(fn($p) => [
+                    'id' => $p->id,
+                    'name' => $p->name,
+                ]);
+            Log::info('Products cargados: ' . $products->count());
 
-        $warehouses = Warehouse::select('id','name')->get()->map(fn($w) => [
-            'id' => $w->id,
-            'name' => $w->name,
-        ]);
+            // Suppliers - SIN contact_phone porque no existe en la tabla
+            $suppliers = Supplier::select('id', 'name')
+                ->orderBy('name')
+                ->get()
+                ->map(fn($s) => [
+                    'id' => $s->id,
+                    'name' => $s->name,
+                ]);
+            Log::info('Suppliers cargados: ' . $suppliers->count());
 
-        return compact('products', 'suppliers', 'locations', 'warehouses');
+            // Warehouses con id, name y address
+            $warehouses = Warehouse::select('id', 'name', 'address')
+                ->orderBy('name')
+                ->get()
+                ->map(fn($w) => [
+                    'id' => $w->id,
+                    'name' => $w->name,
+                    'address' => $w->address ?? '',
+                ]);
+            Log::info('Warehouses cargados: ' . $warehouses->count());
+
+            return compact('products', 'suppliers', 'locations', 'warehouses');
+
+        } catch (\Exception $e) {
+            Log::error('Error en formData(): ' . $e->getMessage());
+            Log::error('Stack trace: ' . $e->getTraceAsString());
+            throw $e;
+        }
     }
 }
-

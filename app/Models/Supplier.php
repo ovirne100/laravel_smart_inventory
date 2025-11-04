@@ -109,8 +109,8 @@ class Supplier extends Model
     public function products()
     {
         return $this->belongsToMany(Product::class, 'product_supplier', 'supplier_id', 'product_id')
-                    ->withPivot('unit_cost', 'supplier_reference')
-                    ->withTimestamps();
+                    ->withPivot('unit_cost', 'supplier_reference');
+                  //  ->withTimestamps();
     }
 
     /**

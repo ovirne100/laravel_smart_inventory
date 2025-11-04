@@ -23,11 +23,14 @@ class Order extends Model
     ];
 
     protected $casts = [
+        'quantity' => 'decimal:2',
         'sent_at' => 'datetime',
         'received_at' => 'datetime',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];
+
+    protected $appends = ['status_label'];
 
     // Constantes de estado
     const STATUS_PENDING = 'pendiente';
@@ -166,6 +169,11 @@ class Order extends Model
         static::creating(function ($order) {
             if (Auth::check() && !$order->user_id) {
                 $order->user_id = Auth::id();
+            }
+
+            // Establecer estado por defecto si no está definido
+            if (!$order->status) {
+                $order->status = self::STATUS_PENDING;
             }
         });
     }

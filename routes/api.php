@@ -118,6 +118,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('summary', [EntryController::class, 'summary']);
         Route::get('form-data', [EntryController::class, 'formData']);
     });
+    // Agregar esta ruta junto con las demás rutas de entries
+Route::get('/entries/lots/{productId}', [EntryController::class, 'lotsByProduct']);
     Route::apiResource('entries', EntryController::class);
     Route::apiResource('entry-notes', EntryNoteController::class);
 
