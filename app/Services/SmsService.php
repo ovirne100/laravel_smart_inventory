@@ -9,7 +9,7 @@ class SmsService
 {
     /**
      * Enviar SMS usando Twilio o servicio similar
-     * 
+     *
      * @param string $to Número de teléfono destino (formato: +1234567890)
      * @param string $message Mensaje a enviar
      * @return bool True si se envió correctamente, False en caso contrario
@@ -19,7 +19,7 @@ class SmsService
         try {
             // Limpiar número de teléfono
             $phone = $this->cleanPhoneNumber($to);
-            
+
             if (!$phone) {
                 Log::warning("Número de teléfono inválido: {$to}");
                 return false;
@@ -27,7 +27,7 @@ class SmsService
 
             // Obtener configuración de SMS desde .env
             $provider = config('services.sms.provider', 'twilio');
-            
+
             switch ($provider) {
                 case 'twilio':
                     return $this->sendViaTwilio($phone, $message);
@@ -51,18 +51,18 @@ class SmsService
     {
         // Remover espacios, guiones, paréntesis
         $cleaned = preg_replace('/[\s\-\(\)]/', '', $phone);
-        
+
         // Si no tiene código de país, agregar +57 (Colombia) o +1 (EEUU) según configuración
         if (!str_starts_with($cleaned, '+')) {
             $countryCode = config('services.sms.default_country_code', '+57');
             $cleaned = $countryCode . $cleaned;
         }
-        
+
         // Validar formato básico
         if (preg_match('/^\+[1-9]\d{1,14}$/', $cleaned)) {
             return $cleaned;
         }
-        
+
         return null;
     }
 
@@ -145,7 +145,7 @@ class SmsService
     {
         $productName = $order->product->name ?? 'Producto';
         $quantity = $order->quantity ?? 0;
-        
+
         return "📦 SOLICITUD DE REABASTECIMIENTO\n\n" .
                "Producto: {$productName}\n" .
                "Cantidad: {$quantity} unidades\n\n" .
@@ -160,7 +160,7 @@ class SmsService
     {
         $productName = $alert->product->name ?? 'Producto';
         $alertType = $alert->alert_type === 'sin_stock' ? 'SIN STOCK' : 'STOCK BAJO';
-        
+
         return "⚠️ ALERTA DE INVENTARIO\n\n" .
                "Producto: {$productName}\n" .
                "Estado: {$alertType}\n\n" .
