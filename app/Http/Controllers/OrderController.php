@@ -67,7 +67,7 @@ class OrderController extends Controller
             ]);
 
             // Cargar relaciones
-            $order->load(['product', 'supplier', 'alert', 'inventory']);
+            $order->load(['product', 'supplier', 'alert', 'inventory', 'user']);
 
             // Intentar resolver proveedor si no vino
             if (!$order->supplier_id) {

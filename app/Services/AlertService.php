@@ -177,7 +177,7 @@ class AlertService
      */
     public function getAlerts(array $filters = []): Collection
     {
-        $query = Alert::with(['product', 'inventory']);
+        $query = Alert::with(['product.suppliers', 'inventory']);
 
         if (!empty($filters['alert_type'])) {
             $query->where('alert_type', $filters['alert_type']);

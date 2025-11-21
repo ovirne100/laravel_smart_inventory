@@ -87,6 +87,30 @@ class EntryService
             $entry = Entry::create($data);
             Log::info("✅ Entrada creada con ID {$entry->id}");
 
+            // 🔗 ASOCIAR PROVEEDOR AL PRODUCTO SI NO ESTÁ ASOCIADO
+            if (!empty($data['supplier_id'])) {
+                $product = Product::find($entry->product_id);
+                if ($product) {
+                    // Verificar si el proveedor ya está asociado
+                    $isAssociated = DB::table('product_supplier')
+                        ->where('product_id', $product->id)
+                        ->where('supplier_id', $data['supplier_id'])
+                        ->exists();
+                    
+                    if (!$isAssociated) {
+                        // Asociar el proveedor al producto
+                        $product->suppliers()->attach($data['supplier_id'], [
+                            'unit_cost' => 0, // Valor por defecto, se puede actualizar después
+                            'created_at' => now(),
+                            'updated_at' => now()
+                        ]);
+                        Log::info("🔗 Proveedor {$data['supplier_id']} asociado al producto {$product->id}");
+                    } else {
+                        Log::info("ℹ️ Proveedor {$data['supplier_id']} ya estaba asociado al producto {$product->id}");
+                    }
+                }
+            }
+
             // Buscar inventario existente (por producto + lote)
             $inventory = Inventory::where('product_id', $entry->product_id)
                                   ->where('lot', $entry->lot)

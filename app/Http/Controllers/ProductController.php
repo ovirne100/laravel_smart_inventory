@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use App\Models\Product;
 use App\Models\Supplier;
+use Illuminate\Support\Facades\Storage;
 
 class ProductController extends Controller
 {
@@ -136,6 +137,7 @@ public function update(Request $request, $id)
         'batch' => 'nullable|string|max:50',
         'expiration_date' => 'nullable|date',
         'image' => 'sometimes|image|mimes:jpeg,png,jpg,gif,svg|max:2048',
+        'eliminar_imagen' => 'nullable|string', // Permitir el parámetro eliminar_imagen
     ]);
     
     // Si se envía codigo_de_barras, usarlo; si no, mantener reference
@@ -161,13 +163,38 @@ public function update(Request $request, $id)
         }
     }
 
+    // 🔹 Manejar eliminación de imagen
+    if ($request->has('eliminar_imagen') && $request->eliminar_imagen === 'true') {
+        // Eliminar archivo físico si existe
+        if ($product->image) {
+            $imagePath = 'public/' . $product->image;
+            if (Storage::exists($imagePath)) {
+                Storage::delete($imagePath);
+            }
+        }
+        // Poner image en NULL en la base de datos
+        $validated['image'] = null;
+    }
+
     // 🔹 Subir imagen si hay una nueva
     if ($request->hasFile('image')) {
+        // Si hay una imagen anterior, eliminarla antes de subir la nueva
+        if ($product->image) {
+            $oldImagePath = 'public/' . $product->image;
+            if (Storage::exists($oldImagePath)) {
+                Storage::delete($oldImagePath);
+            }
+        }
         $validated['image'] = $request->file('image')->store('products', 'public');
     }
 
     // 🔹 Actualizar producto solo con los campos enviados
     $product->fill($validated);
+    
+    // Si se eliminó la imagen, asegurar que se actualice explícitamente
+    if ($request->has('eliminar_imagen') && $request->eliminar_imagen === 'true') {
+        $product->image = null;
+    }
 
     if ($product->isDirty()) { // Guarda solo si hay cambios
         $product->save();

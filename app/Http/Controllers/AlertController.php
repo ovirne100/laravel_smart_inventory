@@ -68,11 +68,19 @@ class AlertController extends Controller
             'product' => [
                 'id' => $alert->product->id ?? null,
                 'name' => $alert->product->name ?? 'Producto desconocido',
-                'lot' => $alert->product->batch ?? null,        // ✅ usar batch
-                'batch' => $alert->product->batch ?? null,
+                'lot' => $alert->inventory->lot ?? $alert->product->batch ?? null,
+                'batch' => $alert->inventory->lot ?? $alert->product->batch ?? null,
                 'reference' => $alert->product->reference ?? null,
+                'codigo_de_barras' => $alert->product->codigo_de_barras ?? null,
+                'suppliers' => $alert->product->suppliers ?? [],
+                'supplier' => $alert->product->suppliers->first() ?? null,
             ],
-            'inventory' => $alert->inventory ?? null,
+            'inventory' => $alert->inventory ? [
+                'id' => $alert->inventory->id ?? null,
+                'stock' => $alert->inventory->stock ?? $alert->inventory->stock_actual ?? 0,
+                'stock_actual' => $alert->inventory->stock_actual ?? $alert->inventory->stock ?? 0,
+                'min_stock' => $alert->inventory->min_stock ?? 0,
+            ] : null,
         ];
     });
 

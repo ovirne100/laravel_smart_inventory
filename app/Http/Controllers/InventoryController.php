@@ -28,7 +28,13 @@ class InventoryController extends Controller
             $query = Inventory::query();
             
             // Eager loading optimizado - solo cargar relaciones necesarias
-            $query->with(['product:id,name,reference', 'warehouse:id,name']);
+            // Incluir proveedores del producto si se solicita
+            $include = $request->get('include', '');
+            if (str_contains($include, 'product.suppliers') || str_contains($include, 'product.supplier')) {
+                $query->with(['product:id,name,reference,codigo_de_barras', 'product.suppliers:id,name', 'warehouse:id,name']);
+            } else {
+                $query->with(['product:id,name,reference,codigo_de_barras', 'warehouse:id,name']);
+            }
             
             // Filtrar por stock mínimo si se especifica
             if ($request->has('stock_min') && $request->stock_min > 0) {
