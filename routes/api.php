@@ -58,6 +58,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('logout', [AuthController::class, 'logout']);
     Route::get('profile', [UserController::class, 'profile']);
     Route::get('user', [AuthController::class, 'me']);
+    Route::post('user/update-image', [UserController::class, 'updateImage']);
+    Route::post('user/delete-image', [UserController::class, 'deleteImage']);
 
     // ======================
     // 📊 Dashboard
