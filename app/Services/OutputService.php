@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+
 use App\Models\Output;
 use App\Models\Product;
 use App\Models\Inventory;
@@ -28,6 +29,7 @@ class OutputService
                 'lote'        => $o->lot ?? '',
                 'inventario'  => $o->inventory->id ?? null,
                 'fecha'       => $o->created_at?->format('Y-m-d H:i:s'),
+                'motivo'      => $o->motivo ?? '',
             ]);
     }
 
@@ -65,12 +67,14 @@ class OutputService
 
                 // Crear salida
                 $output = Output::create([
-                    'product_id'   => $validated['product_id'],
+                    'product_id'   => $inventory->product_id,
                     'inventory_id' => $inventory->id,
                     'quantity'     => $validated['quantity'],
                     'unit'         => $validated['unit'] ?? null,
                     'lot'          => $inventory->lot,
                     'user_id'      => $validated['user_id'],
+                    'motivo'     => $validated['motivo'] ?? null,
+
                 ]);
 
                 // Actualizar stock

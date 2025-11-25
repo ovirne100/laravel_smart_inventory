@@ -17,6 +17,8 @@ class Inventory extends Model
         'product_id',
         'user_id',
         'warehouse_id',
+        'entry_id',
+        'output_id',
         'ubicacion_interna',
         'lot',
         'stock',

@@ -6,368 +6,340 @@ use App\Models\Supplier;
 use App\Models\Product;
 use App\Services\SupplierService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class SupplierController extends Controller
 {
     public function __construct(private SupplierService $service) {}
+
     /**
-     * Display a listing of the resource.
+     * 📄 Listar proveedores con búsqueda y paginación
      */
     public function index(Request $request)
     {
-        return $this->service->list($request->all());
+        $query = Supplier::query();
+
+        // 🔍 Filtro de búsqueda
+        if ($search = $request->get('search')) {
+            $query->where(function ($q) use ($search) {
+                $q->where('name', 'like', "%{$search}%")
+                  ->orWhere('email', 'like', "%{$search}%")
+                  ->orWhere('phone', 'like', "%{$search}%")
+                  ->orWhere('tax_id', 'like', "%{$search}%");
+            });
+        }
+
+        // 📄 Paginación (por defecto 10)
+        $perPage = $request->get('perPage', 10);
+        $suppliers = $query->paginate($perPage);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Lista de proveedores obtenida correctamente',
+            'data' => $suppliers->items(),
+            'total' => $suppliers->total(),
+        ]);
     }
 
     /**
-     * Show the form for creating a new resource.
-     */
-    public function create()
-    {
-        //
-    }
-
-    /**
-     * Store a newly created resource in storage.
+     * ➕ Crear nuevo proveedor
      */
     public function store(Request $request)
     {
-        try {
-            $validated = $request->validate([
-                'name' => 'required|string|max:100',
-                'email' => 'nullable|email|max:100',
-                'phone' => 'nullable|string|max:20',
-                'address' => 'nullable|string|max:150',
-                'tax_id' => 'nullable|string|max:50',
-            ]);
-
-            // Mapear campos del frontend a la estructura de la BD
-            $data = [
-                'name' => $validated['name'],
-                'email' => $validated['email'] ?? null,
-                'phone' => $validated['phone'] ?? 'Sin teléfono',
-                'address' => $validated['address'] ?? 'Sin dirección',
-                'tax_id' => $validated['tax_id'] ?? 'TEMP-' . time(),
-            ];
-
-            $supplier = $this->service->create($data);
-            return response()->json($supplier, 201);
-        } catch (\Exception $e) {
-            return response()->json([
-                'message' => 'Error creating supplier',
-                'error' => $e->getMessage()
-            ], 500);
-        }
-    }
-
-    /**
-     * Display the specified resource.
-     */
-    public function show(Supplier $supplier)
-    {
-        $supplier->load(['products' => function ($q) {
-            $q->with('categoria');
-        }]);
-        return $supplier;
-    }
-
-    /**
-     * Show the form for editing the specified resource.
-     */
-    public function edit(Supplier $supplier)
-    {
-        //
-    }
-
-    /**
-     * Update the specified resource in storage.
-     */
-    public function update(Request $request, Supplier $supplier)
-    {
-        try {
-            $validated = $request->validate([
-                'name' => 'sometimes|required|string|max:100',
-                'email' => 'nullable|email|max:100',
-                'phone' => 'nullable|string|max:20',
-                'address' => 'nullable|string|max:150',
-                'tax_id' => 'nullable|string|max:50',
-            ]);
-
-            $data = [];
-            if (array_key_exists('name', $validated)) $data['name'] = $validated['name'];
-            if (array_key_exists('email', $validated)) $data['email'] = $validated['email'];
-            if (array_key_exists('phone', $validated)) $data['phone'] = $validated['phone'];
-            if (array_key_exists('address', $validated)) $data['address'] = $validated['address'];
-            if (array_key_exists('tax_id', $validated)) $data['tax_id'] = $validated['tax_id'];
-            return $this->service->update($supplier, $data);
-        } catch (\Exception $e) {
-            return response()->json([
-                'message' => 'Error updating supplier',
-                'error' => $e->getMessage()
-            ], 500);
-        }
-    }
-
-    /**
-     * Remove the specified resource from storage.
-     */
- public function destroy($id)
-{
-    try {
-        $supplier = Supplier::findOrFail($id);
-        $supplier->delete();
-
-        return response()->json([
-            'message' => 'Proveedor eliminado correctamente'
-        ], 200);
-    } catch (\Exception $e) {
-        return response()->json([
-            'message' => 'Error eliminando proveedor',
-            'error' => $e->getMessage()
-        ], 500);
-    }
-}
-
-    // Extra endpoints
-    public function products(Supplier $supplier)
-    {
-        try {
-            // Cargar productos con pivot (sin cargar category para evitar errores)
-            $supplier->load('products');
-            
-            // Transformar productos manualmente para evitar problemas de serialización
-            $productsArray = [];
-            
-            foreach ($supplier->products as $product) {
-                $productData = [
-                    'product_id' => $product->id,
-                    'id' => $product->id,
-                    'name' => $product->name ?? '',
-                    'reference' => $product->reference ?? null,
-                    'category_id' => $product->category_id ?? null,
-                ];
-                
-                // Agregar categoría si existe (cargar manualmente si es necesario)
-                if ($product->category_id) {
-                    try {
-                        $category = $product->category;
-                        if ($category) {
-                            $productData['categoria'] = [
-                                'id' => $category->id,
-                                'name' => $category->name ?? ''
-                            ];
-                        }
-                    } catch (\Exception $e) {
-                        // Si hay error cargando category, continuar sin ella
-                        \Log::warning('No se pudo cargar category para producto', [
-                            'product_id' => $product->id,
-                            'error' => $e->getMessage()
-                        ]);
-                    }
-                }
-                
-                // Agregar pivot si existe
-                if ($product->pivot) {
-                    $productData['pivot'] = [
-                        'unit_cost' => $product->pivot->unit_cost ?? null,
-                        'supplier_reference' => $product->pivot->supplier_reference ?? null,
-                    ];
-                }
-                
-                $productsArray[] = $productData;
-            }
-            
-            return response()->json($productsArray);
-        } catch (\Exception $e) {
-            \Log::error('Error en products() del SupplierController', [
-                'supplier_id' => $supplier->id ?? null,
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-                'file' => $e->getFile(),
-                'line' => $e->getLine()
-            ]);
-            
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Error al obtener productos del proveedor',
-                'error' => $e->getMessage(),
-                'file' => $e->getFile(),
-                'line' => $e->getLine()
-            ], 500);
-        }
-    }
-
-    public function attachProducts(Request $request, Supplier $supplier)
-    {
-        try {
-        $data = $request->validate([
-            'products' => 'required|array',
-            'products.*.product_id' => 'required|integer|exists:products,id',
-            'products.*.unit_cost' => 'nullable|numeric',
-            'products.*.supplier_reference' => 'nullable|string|max:255',
+        $validated = $request->validate([
+            'name'    => 'required|string|max:255',
+            'email'   => 'nullable|email|max:255',
+            'phone'   => 'nullable|string|max:50',
+            'address' => 'nullable|string|max:255',
+            'tax_id'  => 'nullable|string|max:50',
+            'status'  => 'nullable|boolean',
         ]);
 
-        $attachData = [];
-        foreach ($data['products'] as $p) {
-            $attachData[$p['product_id']] = [
-                'unit_cost' => $p['unit_cost'] ?? null,
-                'supplier_reference' => $p['supplier_reference'] ?? null,
-            ];
-        }
-        $supplier->products()->syncWithoutDetaching($attachData);
-            
+        try {
+            $supplier = $this->service->create($validated);
+
             return response()->json([
-                'status' => 'success',
-                'message' => 'Productos asociados correctamente'
-            ]);
-        } catch (\Illuminate\Validation\ValidationException $e) {
+                'status'  => 'success',
+                'message' => 'Proveedor creado correctamente',
+                'data'    => $supplier
+            ], 201);
+        } catch (\Throwable $e) {
+            Log::error('❌ Error creando proveedor: ' . $e->getMessage());
             return response()->json([
                 'status' => 'error',
-                'message' => 'Error de validación',
-                'errors' => $e->errors()
-            ], 422);
-        } catch (\Exception $e) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Error al asociar productos',
+                'message' => 'Error interno al crear proveedor',
                 'error' => $e->getMessage()
             ], 500);
         }
     }
 
-    public function syncProducts(Request $request, Supplier $supplier)
+    /**
+     * 🔍 Mostrar un proveedor por ID
+     */
+    public function show($id)
+    {
+        $supplier = Supplier::with('products')->find($id);
+
+        if (!$supplier) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Proveedor no encontrado'
+            ], 404);
+        }
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $supplier
+        ]);
+    }
+
+    /**
+     * ✏️ Actualizar proveedor
+     */
+    public function update(Request $request, $id)
+    {
+        $validated = $request->validate([
+            'name'    => 'sometimes|required|string|max:255',
+            'email'   => 'nullable|email|max:255',
+            'phone'   => 'nullable|string|max:50',
+            'address' => 'nullable|string|max:255',
+            'tax_id'  => 'nullable|string|max:50',
+            'status'  => 'nullable|boolean',
+        ]);
+
+        try {
+            $supplier = Supplier::findOrFail($id);
+            $supplier->fill($validated);
+
+            if ($supplier->isDirty()) {
+                $supplier->save();
+            }
+
+            return response()->json([
+                'status'  => 'success',
+                'message' => 'Proveedor actualizado correctamente',
+                'data'    => $supplier->fresh()
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('❌ Error actualizando proveedor: ' . $e->getMessage());
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Error interno al actualizar proveedor',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * 🗑️ Eliminar proveedor
+     */
+    public function destroy($id)
     {
         try {
-            // Validar que products sea un array
+            $supplier = Supplier::findOrFail($id);
+            $supplier->delete();
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Proveedor eliminado correctamente'
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('❌ Error eliminando proveedor: ' . $e->getMessage());
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Error interno al eliminar proveedor',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * 📦 Obtener productos asociados a un proveedor
+     */
+    public function getProducts(Supplier $supplier)
+    {
+        $products = $supplier->products()
+            ->select('products.id', 'products.name', 'products.reference', 'products.batch', 'products.image')
+            ->withPivot('unit_cost', 'supplier_reference', 'batch')
+            ->get();
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $products
+        ]);
+    }
+
+    /**
+     * 🔗 Asociar productos (sin eliminar existentes)
+     */
+    public function attachProducts(Request $request, Supplier $supplier)
+    {
         $data = $request->validate([
-            'products' => 'required|array',
+            'products' => 'required|array|min:1',
             'products.*.product_id' => 'required|integer|exists:products,id',
             'products.*.unit_cost' => 'nullable|numeric',
             'products.*.supplier_reference' => 'nullable|string|max:255',
+            'products.*.batch' => 'nullable|string|max:50',
+        ]);
+
+        // Validar límite de 50 productos por proveedor
+        $MAX_PRODUCTOS = 50;
+        $productosActuales = $supplier->products()->count();
+        $productosNuevos = count($data['products']);
+        
+        // Filtrar productos que ya están asociados
+        $productosIds = collect($data['products'])->pluck('product_id')->unique();
+        $productosYaAsociados = $supplier->products()
+            ->whereIn('products.id', $productosIds)
+            ->count();
+        
+        $productosRealmenteNuevos = $productosNuevos - $productosYaAsociados;
+        $totalDespues = $productosActuales + $productosRealmenteNuevos;
+
+        if ($totalDespues > $MAX_PRODUCTOS) {
+            $disponibles = $MAX_PRODUCTOS - $productosActuales;
+            return response()->json([
+                'message' => "No se pueden asociar {$productosRealmenteNuevos} productos. Solo se pueden agregar {$disponibles} productos más (máximo {$MAX_PRODUCTOS} por proveedor).",
+                'current_count' => $productosActuales,
+                'max_allowed' => $MAX_PRODUCTOS,
+                'available_slots' => max(0, $disponibles)
+            ], 422);
+        }
+
+        $attachData = [];
+
+        try {
+            DB::beginTransaction();
+
+            foreach ($data['products'] as $p) {
+                $product = Product::find($p['product_id']);
+
+                if (!$product) {
+                    DB::rollBack();
+                    return response()->json(['message' => 'Producto no encontrado'], 422);
+                }
+
+                // Validar que los datos coincidan con el catálogo
+                if (isset($p['supplier_reference']) && $p['supplier_reference'] !== $product->reference) {
+                    DB::rollBack();
+                    return response()->json([
+                        'message' => "Referencia incorrecta para el producto {$product->id}.",
+                        'expected_reference' => $product->reference,
+                    ], 422);
+                }
+
+                if (isset($p['batch']) && $p['batch'] !== $product->batch) {
+                    DB::rollBack();
+                    return response()->json([
+                        'message' => "Lote incorrecto para el producto {$product->id}.",
+                        'expected_batch' => $product->batch,
+                    ], 422);
+                }
+
+                $attachData[$product->id] = [
+                    'unit_cost' => $p['unit_cost'] ?? null,
+                    'supplier_reference' => $product->reference,
+                    'batch' => $product->batch,
+                ];
+            }
+
+            $supplier->products()->syncWithoutDetaching($attachData);
+            DB::commit();
+
+            $productos = $supplier->products()->withPivot('unit_cost', 'supplier_reference', 'batch')->get();
+
+            return response()->json([
+                'message' => 'Productos asociados correctamente',
+                'data' => $productos
+            ], 200);
+
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            Log::error('SupplierController::attachProducts error: '.$e->getMessage());
+            return response()->json([
+                'message' => 'Error interno al asociar productos',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * 🔄 Sincronizar productos (elimina los no incluidos)
+     */
+    public function syncProducts(Request $request, Supplier $supplier)
+    {
+        $data = $request->validate([
+            'products' => 'required|array|min:1',
+            'products.*.product_id' => 'required|integer|exists:products,id',
+            'products.*.unit_cost' => 'nullable|numeric',
+            'products.*.supplier_reference' => 'nullable|string|max:255',
+            'products.*.batch' => 'nullable|string|max:50',
         ]);
 
         $syncData = [];
-        foreach ($data['products'] as $p) {
-            $syncData[$p['product_id']] = [
-                'unit_cost' => $p['unit_cost'] ?? null,
-                'supplier_reference' => $p['supplier_reference'] ?? null,
-            ];
-        }
-            
-            $supplier->products()->syncWithoutDetaching($syncData);
-            
-            return response()->json([
-                'status' => 'success',
-                'message' => 'Productos asociados correctamente'
-            ]);
-        } catch (\Illuminate\Validation\ValidationException $e) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Error de validación',
-                'errors' => $e->errors()
-            ], 422);
-        } catch (\Exception $e) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Error al asociar productos',
-                'error' => $e->getMessage()
-            ], 500);
-        }
-    }
 
-    public function detachProduct(Supplier $supplier, Product $product)
-    {
-        $supplier->products()->detach($product->id);
-        return response()->noContent();
-    }
-
-    public function getProducts($supplier)
-    {
         try {
-            // Manejar tanto model binding como ID directo
-            if (is_numeric($supplier)) {
-                $supplierModel = Supplier::findOrFail($supplier);
-            } elseif ($supplier instanceof Supplier) {
-                $supplierModel = $supplier;
-            } else {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'Proveedor no válido'
-                ], 400);
-            }
-            
-            // Cargar productos con pivot (sin cargar category para evitar errores)
-            $supplierModel->load('products');
-            
-            // Transformar productos manualmente para evitar problemas de serialización
-            $productsArray = [];
-            
-            foreach ($supplierModel->products as $product) {
-                $productData = [
-                    'product_id' => $product->id,
-                    'id' => $product->id,
-                    'name' => $product->name ?? '',
-                    'reference' => $product->reference ?? null,
-                    'category_id' => $product->category_id ?? null,
-                ];
-                
-                // Agregar categoría si existe (cargar manualmente si es necesario)
-                if ($product->category_id) {
-                    try {
-                        // Intentar cargar category si no está cargada
-                        if (!$product->relationLoaded('category')) {
-                            $product->load('category');
-                        }
-                        
-                        if ($product->category) {
-                            $productData['categoria'] = [
-                                'id' => $product->category->id,
-                                'name' => $product->category->name ?? ''
-                            ];
-                        }
-                    } catch (\Exception $e) {
-                        // Si hay error cargando category, continuar sin ella
-                        \Log::warning('No se pudo cargar category para producto', [
-                            'product_id' => $product->id,
-                            'error' => $e->getMessage()
-                        ]);
-                    }
-                }
-                
-                // Agregar pivot si existe
-                if ($product->pivot) {
-                    $productData['pivot'] = [
-                        'unit_cost' => $product->pivot->unit_cost ?? null,
-                        'supplier_reference' => $product->pivot->supplier_reference ?? null,
-                    ];
-                }
-                
-                $productsArray[] = $productData;
-            }
-            
-            return response()->json($productsArray);
-        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Proveedor no encontrado',
-                'error' => $e->getMessage()
-            ], 404);
-        } catch (\Exception $e) {
-            \Log::error('Error en getProducts() del SupplierController', [
-                'supplier' => is_numeric($supplier) ? $supplier : ($supplier instanceof Supplier ? $supplier->id : 'unknown'),
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-                'file' => $e->getFile(),
-                'line' => $e->getLine()
-            ]);
-            
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Error al obtener productos del proveedor',
-                'error' => $e->getMessage(),
-                'file' => $e->getFile(),
-                'line' => $e->getLine()
-            ], 500);
-        }
-}
+            DB::beginTransaction();
 
+            foreach ($data['products'] as $p) {
+                $product = Product::find($p['product_id']);
+
+                if (!$product) {
+                    DB::rollBack();
+                    return response()->json(['message' => 'Producto no encontrado'], 422);
+                }
+
+                if (isset($p['supplier_reference']) && $p['supplier_reference'] !== $product->reference) {
+                    DB::rollBack();
+                    return response()->json([
+                        'message' => "Referencia incorrecta para el producto {$product->id}.",
+                        'expected_reference' => $product->reference,
+                    ], 422);
+                }
+
+                if (isset($p['batch']) && $p['batch'] !== $product->batch) {
+                    DB::rollBack();
+                    return response()->json([
+                        'message' => "Lote incorrecto para el producto {$product->id}.",
+                        'expected_batch' => $product->batch,
+                    ], 422);
+                }
+
+                $syncData[$product->id] = [
+                    'unit_cost' => $p['unit_cost'] ?? null,
+                    'supplier_reference' => $product->reference,
+                    'batch' => $product->batch,
+                ];
+            }
+
+            $supplier->products()->sync($syncData);
+            DB::commit();
+
+            return response()->json(['message' => 'Productos sincronizados correctamente'], 200);
+
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            Log::error('SupplierController::syncProducts error: '.$e->getMessage());
+            return response()->json(['message' => 'Error interno al sincronizar productos', 'error' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * ❌ Desvincular un producto de un proveedor
+     */
+    public function detachProduct(Supplier $supplier, $productId)
+    {
+        if (!$supplier->products()->where('products.id', $productId)->exists()) {
+            return response()->json([
+                'message' => 'El producto no está asociado a este proveedor'
+            ], 404);
+        }
+
+        $supplier->products()->detach($productId);
+
+        return response()->json([
+            'message' => 'Producto desvinculado correctamente'
+        ]);
+    }
 }

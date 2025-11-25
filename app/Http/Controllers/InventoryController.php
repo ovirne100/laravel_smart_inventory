@@ -20,12 +20,45 @@ class InventoryController extends Controller
     }
 
     /**
-     * 📋 Listar todos los inventarios
+     * 📋 Listar todos los inventarios (OPTIMIZADO)
      */
-    public function index()
+    public function index(Request $request)
     {
         try {
-            $inventories = Inventory::with(['product', 'warehouse'])->get();
+            $query = Inventory::query();
+            
+            // Eager loading optimizado - solo cargar relaciones necesarias
+            // Incluir proveedores del producto si se solicita
+            $include = $request->get('include', '');
+            if (str_contains($include, 'product.suppliers') || str_contains($include, 'product.supplier')) {
+                $query->with(['product:id,name,reference,codigo_de_barras', 'product.suppliers:id,name', 'warehouse:id,name']);
+            } else {
+                $query->with(['product:id,name,reference,codigo_de_barras', 'warehouse:id,name']);
+            }
+            
+            // Filtrar por stock mínimo si se especifica
+            if ($request->has('stock_min') && $request->stock_min > 0) {
+                $query->where('stock', '>=', $request->stock_min);
+            }
+            
+            // Filtrar solo con stock positivo
+            if ($request->has('stock_min') && $request->stock_min == 1) {
+                $query->where('stock', '>', 0);
+            }
+            
+            // Seleccionar solo campos necesarios si se especifica
+            if ($request->has('fields')) {
+                $fields = explode(',', $request->fields);
+                $fields = array_map('trim', $fields);
+                // Asegurar que siempre incluimos id y product_id
+                $fields = array_merge(['id', 'product_id'], array_diff($fields, ['id', 'product_id']));
+                $query->select($fields);
+            }
+            
+            // Ordenar por stock descendente para mostrar primero los que tienen stock
+            $query->orderBy('stock', 'desc');
+            
+            $inventories = $query->get();
 
             return response()->json([
                 'status' => 'success',

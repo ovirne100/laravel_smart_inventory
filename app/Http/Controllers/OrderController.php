@@ -2,232 +2,360 @@
 
 namespace App\Http\Controllers;
 
-use App\Services\OrderService;
+use App\Models\Order;
+use App\Models\Product;
+use App\Models\Alert;
+use App\Mail\SupplierOrderMail;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Log;
 
 class OrderController extends Controller
 {
-    protected $orderService;
-
-    public function __construct(OrderService $orderService)
-    {
-        $this->orderService = $orderService;
-    }
-
     /**
-     * 📋 Obtener todas las órdenes
+     * Display a listing of the resource.
      */
     public function index(Request $request)
     {
         try {
-            $filters = $request->only(['status', 'supplier_id', 'product_id', 'date_from', 'date_to']);
-            $orders = $this->orderService->getOrders($filters);
+            $orders = Order::with(['product', 'supplier', 'alert', 'inventory'])
+                ->orderBy('created_at', 'desc')
+                ->paginate($request->get('per_page', 20));
 
             return response()->json([
                 'status' => 'success',
-                'message' => 'Órdenes obtenidas correctamente.',
+                'message' => 'Listado de órdenes obtenido correctamente',
                 'data' => $orders
             ]);
         } catch (\Exception $e) {
-            Log::error('Error al obtener órdenes: ' . $e->getMessage());
-
             return response()->json([
                 'status' => 'error',
-                'message' => 'Error al obtener órdenes.',
+                'message' => 'Error al obtener órdenes',
                 'error' => $e->getMessage()
             ], 500);
         }
     }
 
     /**
-     * 📄 Obtener una orden específica
+     * Store a newly created order from alert.
+     */
+    public function store(Request $request)
+    {
+        try {
+            // Validar datos
+            $validated = $request->validate([
+                'product_id' => 'required|integer|exists:products,id',
+                'inventory_id' => 'nullable|integer|exists:inventories,id',
+                'supplier_id' => 'nullable|integer|exists:suppliers,id',
+                'quantity' => 'required|integer|min:1',
+                'alert_id' => 'nullable|integer|exists:alerts,id',
+                'user_id' => 'required|integer|exists:users,id', // Agregado
+                'supplier_email' => 'nullable|email', // Agregado
+            ]);
+
+            // Crear la orden
+            $order = Order::create([
+                'product_id' => $validated['product_id'],
+                'inventory_id' => $validated['inventory_id'] ?? null,
+                'supplier_id' => $validated['supplier_id'] ?? null,
+                'quantity' => $validated['quantity'],
+                'alert_id' => $validated['alert_id'] ?? null,
+                'user_id' => $validated['user_id'], // IMPORTANTE: Agregado
+                'supplier_email' => $validated['supplier_email'] ?? null, // Agregado
+                'state' => 'pending',
+                'date' => now(),
+            ]);
+
+            // Cargar relaciones
+            $order->load(['product', 'supplier', 'alert', 'inventory', 'user']);
+
+            // Intentar resolver proveedor si no vino
+            if (!$order->supplier_id) {
+                $product = Product::with('suppliers')->find($validated['product_id']);
+                if ($product && $product->suppliers->count() > 0) {
+                    $order->supplier_id = $product->suppliers->first()->id;
+                    $order->save();
+                    $order->load('supplier');
+                }
+            }
+
+            // Enviar email al proveedor si existe email
+            $supplierEmail = null;
+
+            // Priorizar el email del request, luego el del proveedor
+            if ($order->supplier_email) {
+                $supplierEmail = $order->supplier_email;
+            } elseif ($order->supplier && $order->supplier->email) {
+                $supplierEmail = $order->supplier->email;
+            }
+
+
+            // Enviar email al proveedor si existe email
+            if ($supplierEmail) {
+                try {
+                    Mail::to($supplierEmail)->send(new SupplierOrderMail($order));
+                    Log::info('Email enviado a: ' . $supplierEmail);
+
+                } catch (\Exception $e) {
+                    Log::error('Error enviando email de orden: ' . $e->getMessage());
+                    // No fallar la orden si el email falla
+                }
+            }
+
+
+            // Actualizar estado a 'sent' si se envió email
+            if ($supplierEmail) {
+                $order->state = 'sent';
+                $order->save();
+            }
+
+
+            // Marcar alerta como resuelta si existe
+            if ($order->alert) {
+                $order->alert->update([
+                    'status' => Alert::STATUS_RESOLVED,
+                    'resolved_at' => now()
+                ]);
+            }
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Orden creada y enviada al proveedor',
+                'data' => $order
+            ], 201);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Error de validación',
+                'errors' => $e->errors()
+            ], 422);
+        } catch (\Exception $e) {
+            Log::error('Error creando orden: ' . $e->getMessage());
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Error al crear la orden',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Display the specified resource.
      */
     public function show($id)
     {
         try {
-            $order = $this->orderService->getOrder($id);
+            $order = Order::with(['product', 'supplier', 'alert', 'inventory'])->findOrFail($id);
 
             return response()->json([
                 'status' => 'success',
-                'message' => 'Orden obtenida correctamente.',
+                'message' => 'Orden encontrada',
                 'data' => $order
             ]);
-        } catch (\Exception $e) {
-            Log::error("Error al obtener orden {$id}: " . $e->getMessage());
-
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
             return response()->json([
                 'status' => 'error',
-                'message' => 'Orden no encontrada.',
-                'error' => $e->getMessage()
+                'message' => 'Orden no encontrada'
             ], 404);
         }
     }
 
     /**
-     * 📦 Crear orden desde una alerta
+     * Update the specified resource in storage.
      */
-    public function createFromAlert(Request $request)
+    public function update(Request $request, $id)
     {
-        Log::info('📥 Recibiendo solicitud para crear orden desde alerta', $request->all());
-
-        $validator = Validator::make($request->all(), [
-            'alert_id' => 'required|integer|exists:alerts,id',
-            'product_id' => 'required|integer|exists:products,id',
-            'supplier_id' => 'required|integer|exists:suppliers,id',
-            'quantity' => 'required|numeric|min:1',
-            'notes' => 'nullable|string|max:1000',
-        ]);
-
-        if ($validator->fails()) {
-            Log::warning('❌ Validación fallida', $validator->errors()->toArray());
-
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Errores de validación.',
-                'errors' => $validator->errors()
-            ], 422);
-        }
-
         try {
-            $order = $this->orderService->createFromAlert($request->all());
+            $order = Order::findOrFail($id);
 
-            Log::info("✅ Orden #{$order->id} creada exitosamente");
+            $validated = $request->validate([
+                'state' => 'sometimes|string',
+                'quantity' => 'sometimes|integer|min:1',
+            ]);
+
+            $order->update($validated);
+            $order->load(['product', 'supplier', 'alert', 'inventory']);
 
             return response()->json([
                 'status' => 'success',
-                'message' => '✅ Orden creada exitosamente. Se ha enviado un correo al proveedor.',
-                'data' => $order
-            ], 201);
-        } catch (\Exception $e) {
-            Log::error('❌ Error al crear orden desde alerta: ' . $e->getMessage());
-            Log::error('Stack trace: ' . $e->getTraceAsString());
-
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Error al crear la orden.',
-                'error' => $e->getMessage()
-            ], 500);
-        }
-    }
-
-    /**
-     * 🔄 Actualizar estado de una orden
-     */
-    public function updateStatus(Request $request, $id)
-    {
-        $validator = Validator::make($request->all(), [
-            'status' => 'required|string|in:pendiente,enviado,recibido,cancelado'
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Estado inválido.',
-                'errors' => $validator->errors()
-            ], 422);
-        }
-
-        try {
-            $order = $this->orderService->updateStatus($id, $request->status);
-
-            return response()->json([
-                'status' => 'success',
-                'message' => 'Estado de orden actualizado correctamente.',
+                'message' => 'Orden actualizada correctamente',
                 'data' => $order
             ]);
-        } catch (\Exception $e) {
-            Log::error("Error al actualizar estado de orden {$id}: " . $e->getMessage());
-
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
             return response()->json([
                 'status' => 'error',
-                'message' => 'Error al actualizar el estado.',
+                'message' => 'Orden no encontrada'
+            ], 404);
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Error al actualizar la orden',
                 'error' => $e->getMessage()
             ], 500);
         }
     }
 
     /**
-     * ❌ Cancelar una orden
+     * Remove the specified resource from storage.
      */
-    public function cancel(Request $request, $id)
+    public function destroy($id)
     {
-        $validator = Validator::make($request->all(), [
-            'reason' => 'nullable|string|max:500'
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Datos inválidos.',
-                'errors' => $validator->errors()
-            ], 422);
-        }
-
         try {
-            $order = $this->orderService->cancelOrder($id, $request->reason);
+            $order = Order::findOrFail($id);
+            $order->delete();
 
             return response()->json([
                 'status' => 'success',
-                'message' => 'Orden cancelada correctamente.',
-                'data' => $order
+                'message' => 'Orden eliminada correctamente'
+            ]);
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Orden no encontrada'
+            ], 404);
+        }
+    }
+
+    /**
+     * Get orders by supplier
+     */
+    public function bySupplier($supplierId)
+    {
+        try {
+            $orders = Order::where('supplier_id', $supplierId)
+                ->with(['product', 'alert', 'inventory'])
+                ->orderBy('created_at', 'desc')
+                ->paginate(20);
+
+            return response()->json([
+                'status' => 'success',
+                'data' => $orders
             ]);
         } catch (\Exception $e) {
-            Log::error("Error al cancelar orden {$id}: " . $e->getMessage());
-
             return response()->json([
                 'status' => 'error',
-                'message' => 'Error al cancelar la orden.',
+                'message' => 'Error al obtener órdenes',
                 'error' => $e->getMessage()
             ], 500);
         }
     }
 
     /**
-     * 📊 Obtener estadísticas de órdenes
+     * Get orders by product
      */
-    public function stats()
+    public function byProduct($productId)
     {
         try {
-            $stats = $this->orderService->getStats();
+            $orders = Order::where('product_id', $productId)
+                ->with(['supplier', 'alert', 'inventory'])
+                ->orderBy('created_at', 'desc')
+                ->paginate(20);
 
             return response()->json([
                 'status' => 'success',
-                'message' => 'Estadísticas obtenidas correctamente.',
+                'data' => $orders
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Error al obtener órdenes',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Get statistics
+     */
+    public function statistics()
+    {
+        try {
+            $stats = [
+                'total' => Order::count(),
+                'pending' => Order::where('state', 'pending')->count(),
+                'sent' => Order::where('state', 'sent')->count(),
+                'completed' => Order::where('state', 'completed')->count(),
+            ];
+
+            return response()->json([
+                'status' => 'success',
                 'data' => $stats
             ]);
         } catch (\Exception $e) {
-            Log::error('Error al obtener estadísticas: ' . $e->getMessage());
-
             return response()->json([
                 'status' => 'error',
-                'message' => 'Error al obtener estadísticas.',
+                'message' => 'Error al obtener estadísticas',
                 'error' => $e->getMessage()
             ], 500);
         }
     }
 
     /**
-     * 🔄 Reenviar email de orden
+     * Update status
+     */
+    public function updateStatus(Request $request, $id)
+    {
+        try {
+            $order = Order::findOrFail($id);
+
+            $validated = $request->validate([
+                'state' => 'required|string|in:pending,sent,completed,cancelled'
+            ]);
+
+            $order->update(['state' => $validated['state']]);
+            $order->load(['product', 'supplier', 'alert', 'inventory']);
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Estado de orden actualizado',
+                'data' => $order
+            ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Estado inválido',
+                'errors' => $e->errors()
+            ], 422);
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Error al actualizar estado',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Resend email
      */
     public function resendEmail($id)
     {
         try {
-            $this->orderService->resendEmail($id);
+            $order = Order::with(['supplier', 'product'])->findOrFail($id);
+
+            if (!$order->supplier || !$order->supplier->email) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'No se puede reenviar el email: orden sin proveedor o email'
+                ], 400);
+            }
+
+            Mail::to($order->supplier->email)->send(new SupplierOrderMail($order));
+
+            Log::info('Email reenviado para orden: ' . $order->id);
 
             return response()->json([
                 'status' => 'success',
-                'message' => 'Email reenviado correctamente al proveedor.'
+                'message' => 'Email reenviado correctamente'
             ]);
         } catch (\Exception $e) {
-            Log::error("Error al reenviar email de orden {$id}: " . $e->getMessage());
-
             return response()->json([
                 'status' => 'error',
-                'message' => 'Error al reenviar el email.',
+                'message' => 'Error al reenviar email',
                 'error' => $e->getMessage()
             ], 500);
         }
     }
+
 }

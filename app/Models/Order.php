@@ -2,179 +2,136 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Support\Facades\Auth;
+use Illuminate\Database\Eloquent\Builder;
 
 class Order extends Model
 {
-    use HasFactory;
-
     protected $fillable = [
-        'alert_id',
-        'product_id',
+        'date', 
+        'state', 
+        'user_id', 
         'supplier_id',
-        'user_id',
+        'product_id',
+        'inventory_id',
+        'alert_id',
         'quantity',
-        'status',
-        'notes',
-        'sent_at',
-        'received_at',
+        'dep_buy_id',
+        'supplier_email' // Agregado para almacenar el email del proveedor
     ];
 
-    protected $casts = [
-        'quantity' => 'decimal:2',
-        'sent_at' => 'datetime',
-        'received_at' => 'datetime',
-        'created_at' => 'datetime',
-        'updated_at' => 'datetime',
-    ];
+    // Relaciones permitidas en includes
+    protected $allowIncluded = ['supplier', 'user', 'product', 'inventory', 'alert'];
+    protected $allowFilter   = ['id', 'state', 'status'];
+    protected $allowSort     = ['id', 'state', 'date'];
 
-    protected $appends = ['status_label'];
-
-    // Constantes de estado
-    const STATUS_PENDING = 'pendiente';
-    const STATUS_SENT = 'enviado';
-    const STATUS_RECEIVED = 'recibido';
-    const STATUS_CANCELLED = 'cancelado';
-
-    /* ----------------- RELACIONES ----------------- */
-
-    /**
-     * Relación con la alerta que generó la orden
-     */
-    public function alert()
-    {
-        return $this->belongsTo(Alert::class);
-    }
-
-    /**
-     * Relación con el producto solicitado
-     */
-    public function product()
-    {
-        return $this->belongsTo(Product::class);
-    }
-
-    /**
-     * Relación con el proveedor al que se le hace el pedido
-     */
+    // Relación con proveedor
     public function supplier()
     {
-        return $this->belongsTo(Supplier::class);
+        return $this->belongsTo(Supplier::class, 'supplier_id');
     }
 
-    /**
-     * Relación con el usuario que creó la orden
-     */
+    // Relación con usuario
     public function user()
     {
-        return $this->belongsTo(User::class);
+        return $this->belongsTo(User::class, 'user_id');
     }
 
-    /* ----------------- SCOPES ----------------- */
-
-    public function scopePending($query)
+    // Relación con producto
+    public function product()
     {
-        return $query->where('status', self::STATUS_PENDING);
+        return $this->belongsTo(Product::class, 'product_id');
     }
 
-    public function scopeSent($query)
+    // Relación con inventario
+    public function inventory()
     {
-        return $query->where('status', self::STATUS_SENT);
+        return $this->belongsTo(Inventory::class, 'inventory_id');
     }
 
-    public function scopeReceived($query)
+    // Relación con alerta
+    public function alert()
     {
-        return $query->where('status', self::STATUS_RECEIVED);
+        return $this->belongsTo(Alert::class, 'alert_id');
     }
 
-    public function scopeCancelled($query)
+    // Relación uno a muchos con productos (legacy)
+    public function products()
     {
-        return $query->where('status', self::STATUS_CANCELLED);
+        return $this->hasMany(Product::class, 'order_id');
     }
 
-    /* ----------------- HELPERS ----------------- */
-
-    public function isPending(): bool
+    /* ----------------- SCOPES DINÁMICOS ----------------- */
+    public function scopeIncluded(Builder $query)
     {
-        return $this->status === self::STATUS_PENDING;
-    }
+        if (empty($this->allowIncluded) || empty(request('included'))) {
+            return;
+        }
 
-    public function isSent(): bool
-    {
-        return $this->status === self::STATUS_SENT;
-    }
+        $relations = explode(',', request('included'));
+        $allowIncluded = collect($this->allowIncluded);
 
-    public function isReceived(): bool
-    {
-        return $this->status === self::STATUS_RECEIVED;
-    }
-
-    public function isCancelled(): bool
-    {
-        return $this->status === self::STATUS_CANCELLED;
-    }
-
-    /**
-     * Marcar orden como enviada
-     */
-    public function markAsSent(): bool
-    {
-        return $this->update([
-            'status' => self::STATUS_SENT,
-            'sent_at' => now(),
-        ]);
-    }
-
-    /**
-     * Marcar orden como recibida
-     */
-    public function markAsReceived(): bool
-    {
-        return $this->update([
-            'status' => self::STATUS_RECEIVED,
-            'received_at' => now(),
-        ]);
-    }
-
-    /**
-     * Cancelar orden
-     */
-    public function cancel(): bool
-    {
-        return $this->update([
-            'status' => self::STATUS_CANCELLED,
-        ]);
-    }
-
-    /* ----------------- ACCESSORS ----------------- */
-
-    public function getStatusLabelAttribute(): string
-    {
-        return match($this->status) {
-            self::STATUS_PENDING => 'Pendiente',
-            self::STATUS_SENT => 'Enviado',
-            self::STATUS_RECEIVED => 'Recibido',
-            self::STATUS_CANCELLED => 'Cancelado',
-            default => 'Desconocido'
-        };
-    }
-
-    /* ----------------- EVENTOS ----------------- */
-
-    protected static function booted()
-    {
-        // Asignar automáticamente el usuario logueado al crear
-        static::creating(function ($order) {
-            if (Auth::check() && !$order->user_id) {
-                $order->user_id = Auth::id();
+        foreach ($relations as $key => $relationship) {
+            if (!$allowIncluded->contains($relationship)) {
+                unset($relations[$key]);
             }
+        }
 
-            // Establecer estado por defecto si no está definido
-            if (!$order->status) {
-                $order->status = self::STATUS_PENDING;
+        $query->with($relations);
+    }
+
+    public function scopeFilter(Builder $query)
+    {
+        if (empty($this->allowFilter) || empty(request('filter'))) {
+            return;
+        }
+
+        $filters = request('filter');
+        $allowFilter = collect($this->allowFilter);
+
+        foreach ($filters as $filter => $value) {
+            if ($allowFilter->contains($filter)) {
+                if (is_numeric($value)) {
+                    $query->where($filter, $value);
+                } elseif (strtotime($value)) {
+                    $query->whereDate($filter, $value);
+                } else {
+                    $query->where($filter, 'LIKE', '%' . $value . '%');
+                }
             }
-        });
+        }
+    }
+
+    public function scopeSort(Builder $query)
+    {
+        if (empty($this->allowSort) || empty(request('sort'))) {
+            return;
+        }
+
+        $sortFields = explode(',', request('sort'));
+        $allowSort = collect($this->allowSort);
+
+        foreach ($sortFields as $sortField) {
+            $direction = 'asc';
+            if (substr($sortField, 0, 1) == '-') {
+                $direction = 'desc';
+                $sortField = substr($sortField, 1);
+            }
+            if ($allowSort->contains($sortField)) {
+                $query->orderBy($sortField, $direction);
+            }
+        }
+    }
+
+    public function scopeGetOrPaginate(Builder $query)
+    {
+        if (request('perPage')) {
+            $perPage = intval(request('perPage'));
+            if ($perPage) {
+                return $query->paginate($perPage);
+            }
+        }
+
+        return $query->get();
     }
 }

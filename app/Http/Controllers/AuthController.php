@@ -40,6 +40,8 @@ class AuthController extends Controller
                 'name' => $user->name,
                 'lastname' => $user->lastname,
                 'email' => $user->email,
+                'image' => $user->image,
+                'image_url' => $user->image ? url('storage/' . $user->image) : null,
                 'role' => [
                     'id' => $user->role->id,
                     'name' => $user->role->name
@@ -71,6 +73,8 @@ class AuthController extends Controller
                 'name' => $user->name,
                 'lastname' => $user->lastname,
                 'email' => $user->email,
+                'image' => $user->image,
+                'image_url' => $user->image ? url('storage/' . $user->image) : null,
                 'role' => [
                     'id' => $user->role->id,
                     'name' => $user->role->name
@@ -97,6 +101,8 @@ class AuthController extends Controller
             'name' => $user->name,
             'lastname' => $user->lastname,
             'email' => $user->email,
+            'image' => $user->image,
+            'image_url' => $user->image ? asset('storage/' . $user->image) : null,
             'role' => [
                 'id' => $user->role->id,
                 'name' => $user->role->name

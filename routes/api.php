@@ -1,36 +1,38 @@
 <?php
 
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
-// ======================
-// 🧩 Controladores
-// ======================
+// =========================
+// 📦 Controladores principales
+// =========================
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\DepBuyController;
 use App\Http\Controllers\OrderController;
-use App\Http\Controllers\ProductDetailController;
 use App\Http\Controllers\ProductController;
+use App\Http\Controllers\ProductDetailController;
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\InventoryController;
-use App\Http\Controllers\LocationController;
+use App\Http\Controllers\InventoryDetailController;
 use App\Http\Controllers\WarehouseController;
+use App\Http\Controllers\LocationController;
 use App\Http\Controllers\AlertController;
 use App\Http\Controllers\EntryController;
 use App\Http\Controllers\EntryNoteController;
 use App\Http\Controllers\OutputController;
 use App\Http\Controllers\ExitDetailController;
-use App\Http\Controllers\InventoryDetailController;
 use App\Http\Controllers\SupplierController;
 use App\Http\Controllers\ProductSupplierController;
 use App\Http\Controllers\DashboardController;
 
 /*
 |--------------------------------------------------------------------------
-| API Routes - Sistema de Inventario Inteligente
+| API Routes - Sistema de Inventario Unificado
 |--------------------------------------------------------------------------
-| Rutas organizadas por módulos con jerarquía y seguridad
+| Estructura consolidada, limpia y coherente.
+| Agrupa rutas públicas, autenticadas y administrativas.
 |--------------------------------------------------------------------------
 */
 
@@ -56,6 +58,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('logout', [AuthController::class, 'logout']);
     Route::get('profile', [UserController::class, 'profile']);
     Route::get('user', [AuthController::class, 'me']);
+    Route::post('user/update-image', [UserController::class, 'updateImage']);
+    Route::post('user/delete-image', [UserController::class, 'deleteImage']);
 
     // ======================
     // 📊 Dashboard
@@ -66,22 +70,40 @@ Route::middleware('auth:sanctum')->group(function () {
     // 🚨 ALERTAS
     // ======================
     Route::prefix('alerts')->group(function () {
-        Route::get('stats', [AlertController::class, 'stats']);               // Estadísticas
-        Route::post('check-all', [AlertController::class, 'checkAll']);       // Verifica todo el inventario
-        Route::get('/', [AlertController::class, 'index']);                   // Lista con filtros
-        Route::put('{id}/resolve', [AlertController::class, 'resolve']);      // Marcar como resuelta
+        Route::get('/', [AlertController::class, 'index']);
+        Route::get('/{id}', [AlertController::class, 'show']);
+        Route::get('/statistics', [AlertController::class, 'stats']);
+        Route::get('/filter-options', [AlertController::class, 'filterOptions']);
+        Route::post('/check-all', [AlertController::class, 'checkAll']);
+        Route::patch('/{id}/resolve', [AlertController::class, 'resolve']);
+        Route::put('/{id}/status', [AlertController::class, 'updateStatus']); // Nueva ruta para actualizar estado
+        Route::post('/{id}/create-order', [AlertController::class, 'createOrder']);
+    });
 
-        // 🆕 Crear orden automática desde alerta
-        Route::post('{alert}/create-order', [OrderController::class, 'createFromAlert']);
+    // ======================
+    // 🛍️ ÓRDENES
+    // ======================
+    Route::prefix('orders')->group(function () {
+        Route::get('/', [OrderController::class, 'index']);
+        Route::get('/statistics', [OrderController::class, 'statistics']);
+        Route::get('/supplier/{supplierId}', [OrderController::class, 'bySupplier']);
+        Route::get('/product/{productId}', [OrderController::class, 'byProduct']);
+        Route::get('/{id}', [OrderController::class, 'show']);
+        Route::post('/', [OrderController::class, 'store']);
+        Route::put('/{id}', [OrderController::class, 'update']);
+        Route::patch('/{id}/status', [OrderController::class, 'updateStatus']);
+        Route::delete('/{id}', [OrderController::class, 'destroy']);
+        Route::post('/{id}/resend-email', [OrderController::class, 'resendEmail']);
     });
 
     // ======================
     // 🧾 Categorías
     // ======================
     Route::prefix('categories')->group(function () {
+        Route::get('/', [CategoryController::class, 'index']);
+        Route::post('/', [CategoryController::class, 'store']); // Crear categoría individual
         Route::post('init', [CategoryController::class, 'init']);
         Route::post('sync', [CategoryController::class, 'sync']);
-        Route::get('/', [CategoryController::class, 'index']);
         Route::get('{id}', [CategoryController::class, 'show']);
     });
 
@@ -96,11 +118,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('product-details', ProductDetailController::class);
 
     // ======================
-    // 🧮 Inventarios
+    // 📦 Inventarios
     // ======================
     Route::prefix('inventories')->group(function () {
-        Route::get('summary', [InventoryController::class, 'summary']); // Resumen general
-        Route::post('{id}/adjust', [InventoryController::class, 'adjustStock']); // Ajuste de stock
+        Route::get('summary', [InventoryController::class, 'summary']);
+        Route::post('{id}/adjust', [InventoryController::class, 'adjustStock']);
     });
     Route::apiResource('inventories', InventoryController::class);
     Route::apiResource('inventory-details', InventoryDetailController::class);
@@ -115,11 +137,10 @@ Route::middleware('auth:sanctum')->group(function () {
     // 📥 Entradas
     // ======================
     Route::prefix('entries')->group(function () {
+        Route::get('lots-summary', [EntryController::class, 'lotsSummary'])->name('entries.lots-summary');
         Route::get('summary', [EntryController::class, 'summary']);
         Route::get('form-data', [EntryController::class, 'formData']);
     });
-    // Agregar esta ruta junto con las demás rutas de entries
-Route::get('/entries/lots/{productId}', [EntryController::class, 'lotsByProduct']);
     Route::apiResource('entries', EntryController::class);
     Route::apiResource('entry-notes', EntryNoteController::class);
 
@@ -131,26 +152,30 @@ Route::get('/entries/lots/{productId}', [EntryController::class, 'lotsByProduct'
         Route::get('form-data', [OutputController::class, 'formData']);
     });
     Route::apiResource('outputs', OutputController::class);
-    Route::apiResource('exit-details', ExitDetailController::class);
+   
 
     // ======================
-    // 🛍️ Órdenes de Compra
+    // 🧾 Dependencias de Compra
     // ======================
-    Route::apiResource('orders', OrderController::class);
     Route::apiResource('dep-buys', DepBuyController::class);
 
-    // ======================
-    // 🧑‍🤝‍🧑 Proveedores
-    // ======================
-    Route::prefix('suppliers')->group(function () {
-        Route::get('{supplier}/products', [SupplierController::class, 'getProducts']);
-        Route::post('{supplier}/products', [SupplierController::class, 'syncProducts']);
-        Route::post('{supplier}/products/attach', [SupplierController::class, 'attachProducts']);
-        Route::delete('{supplier}/products/{product}', [SupplierController::class, 'detachProduct']);
-        Route::post('{supplierId}/attach-products', [ProductSupplierController::class, 'attachProductsToSupplier']);
-    });
-    Route::apiResource('suppliers', SupplierController::class);
-    Route::apiResource('product-suppliers', ProductSupplierController::class);
+    
+   // ======================
+// 🧑‍🤝‍🧑 Proveedores
+// ======================
+Route::prefix('suppliers')->group(function () {
+    // 🔹 Asociación de productos (debe ir primero para no ser bloqueada)
+    Route::post('{supplierId}/attach-products', [ProductSupplierController::class, 'attachProductsToSupplier']);
+
+    // 🔹 Operaciones de productos asociados
+    Route::get('{supplier}/products', [SupplierController::class, 'getProducts']);
+    Route::post('{supplier}/products/attach', [SupplierController::class, 'attachProducts']);
+    Route::post('{supplier}/products', [SupplierController::class, 'syncProducts']);
+    Route::delete('{supplier}/products/{product}', [SupplierController::class, 'detachProduct']);
+});
+
+Route::apiResource('suppliers', SupplierController::class);
+
 
     // ======================
     // 👑 Administración (solo admin)

@@ -35,4 +35,21 @@ return [
         ],
     ],
 
+    'sms' => [
+        'provider' => env('SMS_PROVIDER', 'twilio'),
+        'default_country_code' => env('SMS_DEFAULT_COUNTRY_CODE', '+57'),
+    ],
+
+    'twilio' => [
+        'account_sid' => env('TWILIO_ACCOUNT_SID'),
+        'auth_token' => env('TWILIO_AUTH_TOKEN'),
+        'from_number' => env('TWILIO_FROM_NUMBER'),
+    ],
+
+    'nexmo' => [
+        'key' => env('NEXMO_KEY'),
+        'secret' => env('NEXMO_SECRET'),
+        'from' => env('NEXMO_FROM'),
+    ],
+
 ];
