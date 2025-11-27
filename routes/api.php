@@ -26,6 +26,7 @@ use App\Http\Controllers\ExitDetailController;
 use App\Http\Controllers\SupplierController;
 use App\Http\Controllers\ProductSupplierController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\UnitController;
 
 /*
 |--------------------------------------------------------------------------
@@ -46,6 +47,11 @@ Route::post('register', [AuthController::class, 'register']);
 Route::post('login', [AuthController::class, 'login']);
 Route::get('roles-public', [RoleController::class, 'getRolesForRegister']);
 Route::post('roles-public', [RoleController::class, 'store']);
+
+// 📏 Unidades de medida (públicas para formularios)
+Route::get('units', [UnitController::class, 'index']);
+Route::post('units', [UnitController::class, 'store']);
+Route::get('units/{id}', [UnitController::class, 'show']);
 
 // ==========================
 // 🟡 RUTAS PROTEGIDAS (Auth)
