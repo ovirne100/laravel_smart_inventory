@@ -27,6 +27,7 @@ use App\Http\Controllers\SupplierController;
 use App\Http\Controllers\ProductSupplierController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\UnitController;
+use App\Http\Controllers\ContactController;
 
 /*
 |--------------------------------------------------------------------------
@@ -47,6 +48,7 @@ Route::post('register', [AuthController::class, 'register']);
 Route::post('login', [AuthController::class, 'login']);
 Route::get('roles-public', [RoleController::class, 'getRolesForRegister']);
 Route::post('roles-public', [RoleController::class, 'store']);
+Route::post('contact', [ContactController::class, 'sendContactEmail']);
 
 // 📏 Unidades de medida (públicas para formularios)
 Route::get('units', [UnitController::class, 'index']);
