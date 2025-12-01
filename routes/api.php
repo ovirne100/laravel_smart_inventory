@@ -39,7 +39,7 @@ use App\Http\Controllers\ContactController;
 */
 
 // ✅ Ruta de prueba
-Route::get('/ping', fn() => response()->json(['message' => 'API funcionando correctamente 🚀']));
+Route::get('/ping', fn() => response()->json(['message' => 'API funcionando correctamente 🚀', 'version' => '2.0', 'deploy' => 'railway-fixed']));
 
 // ==========================
 // 🟢 RUTAS PÚBLICAS
@@ -160,14 +160,14 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('form-data', [OutputController::class, 'formData']);
     });
     Route::apiResource('outputs', OutputController::class);
-   
+
 
     // ======================
     // 🧾 Dependencias de Compra
     // ======================
     Route::apiResource('dep-buys', DepBuyController::class);
 
-    
+
    // ======================
 // 🧑‍🤝‍🧑 Proveedores
 // ======================
